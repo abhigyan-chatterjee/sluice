@@ -409,3 +409,120 @@ def test_router_folds_a_handler_exception_into_json(env):
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is False and "database is locked" in body["error"]
+
+
+# ── malformed request bodies: the no-raise contract ────────────────────────────
+
+
+def test_test_payload_coerces_a_malformed_limit(env, monkeypatch):
+    """``api.test_payload`` is documented as never raising: a bad ``limit`` is defaulted."""
+
+    class FakeRouter:
+        def __init__(self, store=None, settings=None):
+            self.seen = []
+
+        def search(self, query, limit=5):
+            self.seen.append(limit)
+            return {
+                "success": True,
+                "data": {"web": [{"backend": "ddgs", "tier": "keyless", "elapsed_ms": 1.0}]},
+            }
+
+    made: list[FakeRouter] = []
+
+    def fake_router(store=None, settings=None):
+        router = FakeRouter(store=store, settings=settings)
+        made.append(router)
+        return router
+
+    monkeypatch.setattr(api, "Router", fake_router)
+    for bad in ("not-a-number", None, {"five": 5}, [5]):
+        result = api.test_payload(
+            "q", limit=bad, settings=env["settings"], state=env["store"]  # type: ignore[arg-type]
+        )
+        assert result["ok"] is True, bad
+    assert [router.seen for router in made] == [[5], [5], [5], [5]]
+
+
+def test_test_payload_rejects_a_non_string_query(env):
+    result = api.test_payload(123, settings=env["settings"], state=env["store"])  # type: ignore[arg-type]
+    assert result["ok"] is False
+    assert "non-empty string" in result["error"]
+
+
+def test_router_never_answers_a_malformed_test_body_with_a_500(env, monkeypatch):
+    """PLAN.md:127-134 / the plugin contract: operational failure is JSON, not a traceback.
+
+    ``POST /test`` runs before the caller is known to have sent sane JSON, so the wrapper
+    must hand the raw fields to ``_safe`` and let coercion/validation produce an envelope.
+    """
+    fastapi = pytest.importorskip("fastapi")
+    client_mod = pytest.importorskip("fastapi.testclient")
+    from dashboard import plugin_api
+
+    class FakeRouter:
+        def __init__(self, store=None, settings=None):
+            pass
+
+        def search(self, query, limit=5):
+            return {
+                "success": True,
+                "data": {"web": [{"backend": "ddgs", "tier": "keyless", "elapsed_ms": 1.0}]},
+            }
+
+    monkeypatch.setattr(api, "Router", FakeRouter)
+    app = fastapi.FastAPI()
+    app.include_router(plugin_api.router, prefix="/api/plugins/sluice")
+    client = client_mod.TestClient(app, raise_server_exceptions=False)
+
+    bad_limit = client.post("/api/plugins/sluice/test", json={"query": "q", "limit": "bad"})
+    assert bad_limit.status_code == 200
+    assert bad_limit.json()["ok"] is True
+
+    non_string = client.post("/api/plugins/sluice/test", json={"query": 123})
+    assert non_string.status_code == 200
+    assert non_string.json()["ok"] is False
+    assert "non-empty string" in non_string.json()["error"]
+
+
+def test_test_payload_reports_zero_matches_as_success(env, monkeypatch):
+    """A vendor that answers "nothing" is still a successful request (0 rows, no error)."""
+
+    class FakeRouter:
+        def __init__(self, store=None, settings=None):
+            pass
+
+        def search(self, query, limit=5):
+            return {"success": True, "data": {"web": []}}
+
+    monkeypatch.setattr(api, "Router", FakeRouter)
+    result = api.test_payload("no matches for this", settings=env["settings"], state=env["store"])
+    assert result["ok"] is True
+    assert result["rows"] == []
+    assert result["error"] is None
+    assert result["backend"] is None
+
+
+def test_a_pinned_backend_receives_a_clamped_limit(env, monkeypatch):
+    seen: dict[str, int] = {}
+
+    class Fake:
+        def missing_message(self):
+            return ""
+
+        def mode(self):
+            return "keyless"
+
+        def tier(self, plan="paid"):
+            return "keyless"
+
+        def search(self, query, limit=5, **kwargs):
+            seen["limit"] = limit
+            return {"ok": True, "results": []}
+
+    monkeypatch.setattr(api, "make_backend", lambda vendor, settings: Fake())
+    result = api.test_payload(
+        "q", backend_id="ddgs", limit="-3", settings=env["settings"], state=env["store"]  # type: ignore[arg-type]
+    )
+    assert result["ok"] is True
+    assert seen["limit"] == 1

@@ -8,6 +8,7 @@ in ``tests/test_backends.py``.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -23,7 +24,13 @@ from sluice.router import (
     extract_cache_key,
     search_cache_key,
 )
-from sluice.store import NS_EXTRACT, NS_EXTRACT_NEGATIVE, NS_SEARCH_GENERAL, Store
+from sluice.store import (
+    NS_EXTRACT,
+    NS_EXTRACT_NEGATIVE,
+    NS_SEARCH_GENERAL,
+    Store,
+    open_store,
+)
 
 
 class FakeClock:
@@ -52,6 +59,7 @@ class FakeBackend:
         missing: str = "",
         clock: FakeClock | None = None,
         cost: float = 0.0,
+        results: list[dict] | None = None,
     ) -> None:
         self.spec = BackendSpec(
             id=vendor, label=vendor.title(), tiers=(tier,), search=True, extract=True
@@ -64,6 +72,7 @@ class FakeBackend:
         self._missing = missing
         self._clock = clock
         self._cost = cost
+        self._results = results
         self.calls: list[dict] = []
 
     def missing_message(self) -> str:
@@ -83,12 +92,12 @@ class FakeBackend:
         if self._clock is not None:
             self._clock.advance(self._delay)
         if self._ok:
-            return {
-                "ok": True,
-                "results": [
+            rows = self._results
+            if rows is None:
+                rows = [
                     {"url": f"https://{self.spec.id}/1", "title": self.spec.id, "description": "d", "position": 1}
-                ],
-            }
+                ]
+            return {"ok": True, "results": rows}
         return {"ok": False, "error": self._error, "quota": self._quota}
 
 
@@ -280,6 +289,21 @@ def test_an_empty_query_is_rejected_without_calling_anything():
     assert backend.calls == []
 
 
+def test_a_malformed_limit_never_raises_and_falls_back_to_the_default():
+    """PLAN.md:64-72 / router.search's "Never raises": a bad limit is a request, not a crash.
+
+    The tool layer hands whatever the caller wrote straight through, so ``limit`` can be a
+    string, ``None`` or a container. None of those may escape as a ValueError/TypeError.
+    """
+    backend = FakeBackend("only", "free")
+    router = router_with(backend)
+    for bad in ("not-a-number", None, {"five": 5}, [5]):
+        result = router.search("zstd", limit=bad)  # type: ignore[arg-type]
+        assert result["success"] is True, bad
+    assert [call["limit"] for call in backend.calls] == [5, 5, 5, 5]
+
+
+
 # ── cache ────────────────────────────────────────────────────────────────────────
 
 
@@ -416,3 +440,223 @@ def test_provider_surfaces_a_clean_failure_when_nothing_is_routable(monkeypatch)
     result = provider.search("q")
     assert result["success"] is False
     assert "no backend answered" in result["error"]
+
+
+# ── malformed input: a request, never a crash ───────────────────────────────────
+
+
+@pytest.mark.parametrize("query", [None, 123, ["q"], "", "   \t\n  "])
+def test_an_invalid_query_is_rejected_without_calling_a_backend(query):
+    backend = FakeBackend("only", "free")
+    result = router_with(backend).search(query)  # type: ignore[arg-type]
+    assert result == {"success": False, "error": "sluice: empty query"}
+    assert backend.calls == []
+
+
+def test_a_limit_below_one_is_clamped_to_one():
+    backend = FakeBackend("only", "free")
+    result = router_with(backend).search("zstd", limit=-5)
+    assert result["success"] is True
+    assert backend.calls[0]["limit"] == 1
+
+
+def test_a_search_with_zero_matches_is_a_success_and_is_cached(store):
+    """An empty answer is still an answer: cache it so a dead query is not re-run."""
+    backend = FakeBackend("only", "free", results=[])
+    router = router_with(backend, store=store)
+    assert store.cache_count() == 0
+
+    first = router.search("a query with no matches")
+    assert first == {"success": True, "data": {"web": []}}
+    assert store.cache_count() == 1
+
+    second = router.search("a query with no matches")
+    assert second == {"success": True, "data": {"web": []}}
+    assert len(backend.calls) == 1
+
+
+def test_extract_of_an_empty_list_is_an_empty_batch(store):
+    assert router_with(store=store).extract([]) == []
+
+
+def test_extract_turns_a_none_entry_into_one_failed_item(store, monkeypatch):
+    """One bad URL never fails the batch; the item carries the error."""
+
+    def refuses(url, **kwargs):
+        raise ValueError(f"not a URL: {url!r}")
+
+    monkeypatch.setattr("sluice.ladder.fetch", refuses)
+    items = router_with(store=store).extract([None])  # type: ignore[list-item]
+    assert len(items) == 1
+    assert items[0]["url"] == "None"
+    assert items[0]["error"] and items[0]["block_class"] == "error"
+
+
+# ── budgets from malformed settings ────────────────────────────────────────────
+
+
+def test_a_non_numeric_per_backend_budget_falls_back_to_the_default():
+    backend = FakeBackend("only", "free")
+    router = router_with(backend, per_backend_budget_ms="abc")
+    assert router.search("q")["success"] is True
+    assert backend.calls[0]["timeout"] == pytest.approx(PER_BACKEND_BUDGET_MS / 1000.0)
+
+
+def test_a_negative_total_budget_is_clamped_and_never_raises():
+    backend = FakeBackend("only", "free")
+    router = router_with(backend, total_budget_ms=-10)
+    result = router.search("q")
+    assert result["success"] is True
+    assert backend.calls[0]["timeout"] == pytest.approx(0.001)
+
+
+# ── a cached answer is only valid while its backend stays routable ─────────────
+
+
+class KeyedBackend(FakeBackend):
+    """A keyed backend whose availability follows the settings dict, like a real adapter."""
+
+    def __init__(self, vendor: str, tier: str, env: str, live: dict) -> None:
+        super().__init__(vendor, tier)
+        self.env = env
+        self.live = live
+
+    def missing_message(self) -> str:
+        return "" if self.live.get(self.env) else f"{self.env} is not set."
+
+    def mode(self) -> str:
+        return "unavailable" if self.missing_message() else "keyed"
+
+
+class KeylessBackend(FakeBackend):
+    """A keyless-only backend whose availability follows ``keyless_enabled``."""
+
+    def __init__(self, vendor: str, live: dict) -> None:
+        super().__init__(vendor, "keyless")
+        self.live = live
+
+    def missing_message(self) -> str:
+        return "" if self.live.get("keyless_enabled") else "the keyless tier is disabled."
+
+    def mode(self) -> str:
+        return "unavailable" if self.missing_message() else "keyless"
+
+
+def test_a_cached_hit_is_dropped_when_the_winning_backend_loses_its_key(store):
+    live = {"BRAVE_API_KEY": "k"}
+    backend = KeyedBackend("brave", "free", "BRAVE_API_KEY", live)
+    router = Router(store=store, settings=settings(BRAVE_API_KEY="k"), backends={"brave": backend})
+    assert router.search("zstd", limit=2)["success"] is True
+
+    live["BRAVE_API_KEY"] = ""
+    second = router.search("zstd", limit=2)
+    assert second["success"] is False
+    assert "no backend answered" in second["error"]
+    assert len(backend.calls) == 1
+
+
+def test_a_cached_hit_is_dropped_when_the_keyless_tier_is_switched_off(store):
+    live = {"keyless_enabled": True}
+    backend = KeylessBackend("ddgs", live)
+    router = Router(store=store, settings=settings(), backends={"ddgs": backend})
+    assert router.search("zstd")["success"] is True
+
+    live["keyless_enabled"] = False
+    second = router.search("zstd")
+    assert second["success"] is False
+    assert "keyless" in second["error"]
+    assert len(backend.calls) == 1
+
+
+def test_a_cached_hit_is_dropped_when_the_winning_backends_circuit_opens(store):
+    backend = FakeBackend("only", "free")
+    router = router_with(backend, store=store)
+    assert router.search("zstd")["success"] is True
+
+    for _ in range(3):
+        store.record_failure("only", error="HTTP 503")
+    second = router.search("zstd")
+    assert second["success"] is False
+    assert "circuit" in second["error"]
+    assert len(backend.calls) == 1
+
+
+# ── the provider end to end, against a hermetic data directory ─────────────────
+
+
+class HermeticContext:
+    """A PluginContext whose only job is to hand back a temporary data directory."""
+
+    def __init__(self, data_dir: Path) -> None:
+        self._data_dir = data_dir
+
+    def plugin_data_dir(self) -> Path:
+        return self._data_dir
+
+
+def test_provider_search_and_extract_persist_in_the_context_data_dir(tmp_path, monkeypatch):
+    """PLAN.md:53-72 — the provider owns a SQLite store under ``ctx.plugin_data_dir()``.
+
+    The vendor, the ladder fetch and the settings are all injected: this proves the provider
+    wiring (store, cache, metadata), not vendor behaviour, and it never reads the real
+    Hermes state directory.
+    """
+    data_dir = tmp_path / "plugin-data"
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("SLUICE_DATA_DIR", str(tmp_path / "must-not-be-used"))
+
+    def never_the_default() -> Path:
+        raise AssertionError("the provider must use ctx.plugin_data_dir(), not the fallback")
+
+    monkeypatch.setattr("sluice.store.default_data_dir", never_the_default)
+
+    backend = FakeBackend("exa", "keyless")
+
+    def make_fake(vendor, settings_dict):
+        assert vendor == "exa"
+        return backend
+
+    monkeypatch.setattr("sluice.router.BACKEND_MODULES", ("exa",))
+    monkeypatch.setattr("sluice.router.make_backend", make_fake)
+
+    fetches: list[str] = []
+
+    def fake_fetch(url, **kwargs):
+        fetches.append(url)
+        return {
+            "url": url,
+            "title": "Example",
+            "content": "[sluice: stage=http status=ok]\n\nbody",
+            "raw_content": "body",
+            "block_class": "ok",
+            "stage": "http",
+            "stages": [],
+            "blocked_by_policy": False,
+        }
+
+    monkeypatch.setattr("sluice.ladder.fetch", fake_fetch)
+
+    provider = SluiceWebSearchProvider(HermeticContext(data_dir))
+    provider._settings = {**DEFAULTS, **{env: "" for env in SECRET_ENVS}, "keyless_enabled": True}
+    try:
+        result = provider.search("zstd vs gzip", limit=3)
+        assert result["success"] is True
+        row = result["data"]["web"][0]
+        assert row["backend"] == "exa" and row["cached"] is False
+
+        database = data_dir / "sluice.db"
+        assert database.is_file(), "the provider did not open its store in the data dir"
+        with open_store(data_dir, settings=provider._settings) as reopened:
+            assert reopened.cache_count() >= 1
+            assert reopened.backend_state("exa").calls == 1
+
+        cached = provider.search("zstd vs gzip", limit=3)
+        assert cached["data"]["web"][0]["cached"] is True
+        assert len(backend.calls) == 1
+
+        items = provider.extract(["https://example.com/a"])
+        assert items[0]["title"] == "Example" and items[0]["cached"] is False
+        assert provider.extract(["https://example.com/a"])[0]["cached"] is True
+        assert fetches == ["https://example.com/a"]
+    finally:
+        provider.close()

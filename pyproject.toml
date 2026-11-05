@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+# `fastapi` is a Hermes dependency at runtime, not a package dependency: the dashboard
+# wrapper is only imported when Hermes mounts it. The dev extra installs it so the route
+# tests in tests/test_plugin_api.py run instead of skipping in a clean venv and in CI.
+dev = ["pytest>=8,<10", "fastapi>=0.110"]
 
 [project.scripts]
 sluice = "sluice.cli:main"

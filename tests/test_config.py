@@ -143,3 +143,46 @@ def test_configured_backends_respects_capability():
     searchable = set(configured_backends(settings, capability="search"))
     extractable = set(configured_backends(settings, capability="extract"))
     assert "brave" in searchable and "brave" not in extractable
+
+
+# ── a broken or hostile config file must never break a search ───────────────────
+
+
+class FakeContext:
+    """The ``get_config`` surface ``load_settings`` uses, with failure on demand."""
+
+    def __init__(self, values: dict | None = None, *, broken: bool = False) -> None:
+        self.values = dict(values or {})
+        self.broken = broken
+        self.calls: list[str] = []
+
+    def get_config(self, key, default=None):
+        self.calls.append(key)
+        if self.broken:
+            raise RuntimeError("config.yaml is half-written")
+        return self.values.get(key, default)
+
+
+def test_an_unknown_tier_order_is_repaired_to_the_four_known_tiers():
+    settings = load_settings(FakeContext({"tier_order": "bogus,paid"}))
+    assert tier_order(settings) == ["paid", "local", "keyless", "free"]
+
+
+def test_boolean_setting_strings_are_parsed_and_garbage_keeps_the_default():
+    for raw, expected in (("yes", True), ("ON", True), ("0", False), ("off", False), ("maybe", True)):
+        settings = load_settings(FakeContext({"keyless_enabled": raw}))
+        assert settings["keyless_enabled"] is expected, raw
+
+
+def test_a_broken_context_falls_back_to_the_shipped_defaults():
+    ctx = FakeContext(broken=True)
+    settings = load_settings(ctx)
+    for key, value in DEFAULTS.items():
+        assert settings[key] == value, key
+    assert ctx.calls, "the loader should have tried the context before falling back"
+
+
+def test_missing_values_keep_the_manifest_defaults():
+    settings = load_settings(FakeContext({}))
+    for key, value in DEFAULTS.items():
+        assert settings[key] == value, key
