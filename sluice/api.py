@@ -31,7 +31,7 @@ from .manage import (
     start_install_job,
     stop_camofox,
 )
-from .router import Router
+from .router import Router, coerce_limit
 from .store import Store, open_store
 
 #: Settings the pane may edit. Secrets are not here on purpose: keys go through Hermes'
@@ -281,7 +281,7 @@ def test_payload(
     state = state or store(settings)
     if not isinstance(query, str) or not query.strip():
         return {"ok": False, "error": "query must be a non-empty string"}
-    safe_limit = max(1, min(int(limit or 5), 20))
+    safe_limit = coerce_limit(limit, maximum=20)
 
     if backend_id:
         if backend_id not in BACKEND_MODULES:

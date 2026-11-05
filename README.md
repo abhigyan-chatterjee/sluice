@@ -83,7 +83,7 @@ Sluice makes network calls only when you or a Hermes tool ask it to. The destina
 
 - **Search/extract APIs**: the twelve vendors above, at their documented hosts —
   `api.exa.ai` and `mcp.exa.ai`, `api.parallel.ai` and `search.parallel.ai`,
-  `api.firecrawl.dev`, `api.tavily.com`, `api.keenable.com`, `api.search.brave.com`,
+  `api.firecrawl.dev`, `api.tavily.com`, `api.keenable.ai`, `api.search.brave.com`,
   `api.perplexity.ai`, `api.deepseek.com`, `api.search.tinyfish.ai`, `api.x.ai`, plus your
   own `SEARXNG_URL`. The keyless paths (Exa MCP, Parallel MCP, Firecrawl, Tavily,
   Keenable public) send no credential.

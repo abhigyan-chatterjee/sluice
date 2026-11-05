@@ -49,13 +49,17 @@ def probe(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
 
 @router.post("/test")
 def test(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
-    """Run one query, optionally pinned to one backend."""
+    """Run one query, optionally pinned to one backend.
+
+    The body fields go in raw: coercion and validation live in ``sluice.api``, so a
+    malformed field becomes a JSON envelope instead of raising before ``_safe`` runs.
+    """
     body = payload if isinstance(payload, dict) else {}
     return _safe(
         api.test_payload,
-        str(body.get("query") or ""),
+        body.get("query"),
         backend_id=body.get("backend") or None,
-        limit=int(body.get("limit") or 5),
+        limit=body.get("limit", 5),
     )
 
 

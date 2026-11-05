@@ -142,6 +142,22 @@ def extract_cache_key(url: str, fmt: str = "") -> str:
     return json.dumps([str(url), fmt or ""], separators=(",", ":"))
 
 
+def coerce_limit(raw: Any, default: int = 5, *, maximum: int | None = None) -> int:
+    """A usable result limit from an untrusted value.
+
+    :meth:`Router.search` is documented as never raising, and the dashboard routes hand it
+    the raw JSON field, so a non-numeric string, ``None`` or a container falls back to
+    *default* instead of escaping as ``ValueError``/``TypeError``. The result is always at
+    least 1 and, when *maximum* is given, capped there.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        value = default
+    value = max(1, value)
+    return value if maximum is None else min(value, maximum)
+
+
 class Router:
     """Sequential free-first router over the backend registry."""
 
@@ -263,7 +279,7 @@ class Router:
         """Run one query through the ladder of backends. Never raises."""
         if not isinstance(query, str) or not query.strip():
             return {"success": False, "error": "sluice: empty query"}
-        safe_limit = max(1, int(limit))
+        safe_limit = coerce_limit(limit)
         qclass = classify_query(query)
         namespace = NS_SEARCH_NEWS if qclass == "news" else NS_SEARCH_GENERAL
         ttl = self._int_setting(
