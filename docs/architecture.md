@@ -160,7 +160,11 @@ exist for `hermes sluice test --backend <id>` and for probes (`sluice/router.py:
    `headless=False` with `--headless=new` so it is the real browser and not the headless
    shell, `--disable-blink-features=AutomationControlled`, host locale and timezone, cookies
    carried from stage 1, 15 s cap. Playwright's managed build is used when present; when it
-   is absent, a Chromium/Chrome already on `PATH` is passed as `executable_path`.
+   is absent, a Chromium/Chrome already on `PATH` is passed as `executable_path`. The locale
+   is normalized before it reaches `new_context`: `C`, `POSIX`, `C.UTF-8`, an empty or a
+   malformed tag becomes `en-US`, and `ll_CC.encoding@modifier` becomes `ll-CC`, because
+   Chromium rejects a POSIX pseudo-locale at `new_page()` with
+   `Emulation.setLocaleOverride: Invalid locale name`.
 7. Stage 3, `camofox` (`623-732`): only when `GET /health` reports `ok`, opens a tab, reads
    the snapshot text, closes the tab.
 8. After every response with headers, `X-Robots-Tag` and `Content-Signal` are checked
