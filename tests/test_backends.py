@@ -16,10 +16,12 @@ import sys
 import time
 import types
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 
+from sluice import api
 from sluice.backends import (
     BACKEND_MODULES,
     all_backends,
@@ -27,6 +29,8 @@ from sluice.backends import (
     spec,
     specs,
 )
+from sluice.router import Router
+from sluice.store import Store
 from sluice.backends._http import (
     failure,
     missing_key_message,
@@ -307,6 +311,121 @@ def test_ddgs_search_works_under_the_hermes_plugins_loader(monkeypatch):
             "position": 1,
         }
     ]
+
+
+def test_ddgs_router_search_works_under_the_hermes_plugins_loader(monkeypatch, tmp_path):
+    """F1: router.search() with ddgs works under the synthetic hermes_plugins loader."""
+    module = _load_ddgs_as_hermes_plugin()
+    monkeypatch.setattr(module, "_CHILD_SOURCE", _CANNED_DDGS_CHILD)
+
+    store = Store(tmp_path / "sluice.db")
+    try:
+        backend = module.DdgsBackend()
+        router = Router(store=store, settings=settings(), backends={"ddgs": backend})
+        result = router.search("rust", limit=2)
+
+        assert result["success"] is True, result.get("error")
+        rows = result["data"]["web"]
+        assert len(rows) == 1
+        assert rows[0]["backend"] == "ddgs"
+        assert rows[0]["fallback_used"] is False
+        assert rows[0]["title"] == "rust"
+        assert store.backend_state("ddgs").calls == 1
+        assert store.backend_state("ddgs").failures == 0
+    finally:
+        store.close()
+
+
+def test_ddgs_failure_is_not_silent_and_surfaces_in_store_and_desktop_status(monkeypatch, tmp_path):
+    """F1: ddgs failure records in backend_state/usage and surfaces in desktop status."""
+    module = _load_ddgs_as_hermes_plugin()
+    monkeypatch.setattr(module, "_CHILD_SOURCE", "import sys; sys.exit(1)")
+
+    class _BackupBackend:
+        def __init__(self, backend_id: str = "exa", tier: str = "keyless") -> None:
+            self.spec = spec(backend_id)
+            self.id = backend_id
+            self._tier = tier
+            self.key = ""
+            self.keyless_capable = True
+
+        def mode(self) -> str:
+            return "keyless"
+
+        def tier(self, plan: str = "free") -> str:
+            return self._tier
+
+        def cost_per_call(self) -> float:
+            return 0.0
+
+        def missing_message(self) -> str:
+            return ""
+
+        def search(self, query: str, limit: int = 5, **kwargs: Any) -> dict[str, Any]:
+            return {
+                "ok": True,
+                "results": [
+                    {
+                        "url": "https://example.test/backup",
+                        "title": "Backup",
+                        "description": "Backup result",
+                        "position": 1,
+                    }
+                ],
+                "cost_usd": 0.0,
+            }
+
+    store = Store(tmp_path / "sluice.db")
+    try:
+        ddgs_backend = module.DdgsBackend()
+        backup = _BackupBackend("exa", "keyless")
+        router = Router(
+            store=store,
+            settings=settings(),
+            backends={"ddgs": ddgs_backend, "exa": backup},
+        )
+
+        result = router.search("rust", limit=2)
+        assert result["success"] is True
+        rows = result["data"]["web"]
+        assert len(rows) == 1
+        assert rows[0]["backend"] == "exa"
+        assert rows[0]["fallback_used"] is True
+
+        # State recorded in backend_state
+        state = store.backend_state("ddgs")
+        assert state.calls == 1
+        assert state.failures == 1
+        assert state.consecutive_failures == 1
+        assert "ddgs failed" in state.last_error
+
+        # State recorded in usage table
+        usage_row = store._conn.execute(
+            "SELECT backend, kind, ok FROM usage WHERE backend = ?", ("ddgs",)
+        ).fetchone()
+        assert usage_row is not None
+        assert usage_row["backend"] == "ddgs"
+        assert usage_row["kind"] == "search"
+        assert usage_row["ok"] == 0
+
+        # State visible in desktop status payload
+        payload = api.status_payload(settings=settings(), state=store)
+        ddgs_item = next(b for b in payload["backends"] if b["id"] == "ddgs")
+        assert ddgs_item["health"] == "error"
+        assert ddgs_item["failures"] == 1
+        assert "ddgs failed" in ddgs_item["last_error"]
+
+        # Loud error when no backup exists
+        router_no_backup = Router(
+            store=store,
+            settings=settings(),
+            backends={"ddgs": ddgs_backend},
+        )
+        fail_result = router_no_backup.search("uncached-query", limit=2)
+        assert fail_result["success"] is False
+        assert "ddgs: ddgs failed" in fail_result["error"]
+    finally:
+        store.close()
 
 
 def _load_ddgs_as_hermes_plugin():

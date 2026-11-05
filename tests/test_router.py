@@ -268,6 +268,34 @@ def test_per_backend_budget_is_passed_to_the_adapter():
     assert backend.calls[0]["timeout"] == pytest.approx(PER_BACKEND_BUDGET_MS / 1000.0)
 
 
+def test_a_backend_that_declares_its_own_window_gets_it():
+    """F1: a slow local transport is not killed by the global 2.5 s window."""
+    backend = FakeBackend("slowlocal", "keyless")
+    backend.spec = BackendSpec(
+        id="slowlocal", label="slowlocal", tiers=("keyless",), search=True, extract=False,
+        budget_ms=6000,
+    )
+    router_with(backend).search("q")
+    assert backend.calls[0]["timeout"] == pytest.approx(6.0)
+
+
+def test_a_declared_window_never_exceeds_the_total_budget():
+    backend = FakeBackend("slowlocal", "keyless")
+    backend.spec = BackendSpec(
+        id="slowlocal", label="slowlocal", tiers=("keyless",), search=True, extract=False,
+        budget_ms=60_000,
+    )
+    router_with(backend, total_budget_ms=3000).search("q")
+    assert backend.calls[0]["timeout"] == pytest.approx(3.0)
+
+
+def test_ddgs_asks_for_a_window_wider_than_the_global_default():
+    """The real ddgs adapter measures 1.9-7.4 s per call, so 2.5 s would never let it answer."""
+    from sluice.backends.ddgs import SPEC
+
+    assert SPEC.budget_ms > PER_BACKEND_BUDGET_MS
+
+
 def test_total_budget_expiry_returns_each_backends_reason():
     clock = FakeClock()
     slow = [

@@ -329,7 +329,11 @@ class Router:
             if remaining <= 0:
                 reasons.append(f"{candidate.id}: total budget of {int(total * 1000)} ms exhausted")
                 break
-            timeout = min(per_backend, remaining)
+            # A backend whose transport is inherently slower than the global window asks for
+            # its own (``spec.budget_ms``); that only ever widens this attempt, and the total
+            # budget below still bounds it.
+            window = max(per_backend, int(getattr(candidate.backend.spec, "budget_ms", 0) or 0) / 1000.0)
+            timeout = min(window, remaining)
             attempt_started = self._clock()
             result = self._call_search(candidate, query, safe_limit, freshness, timeout)
             elapsed_ms = round(max(0.0, self._clock() - attempt_started) * 1000, 1)

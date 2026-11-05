@@ -66,6 +66,12 @@ class BackendSpec:
     summary: str = ""
     #: The PLAN.md task that implemented the adapter (T4, T5 or T6).
     task: str = ""
+    #: Per-backend wall clock this adapter needs to answer, in ms. ``0`` means "no opinion":
+    #: the router's ``per_backend_budget_ms`` setting applies. A non-zero value only ever
+    #: *raises* that window for this one backend (still clamped by the total budget), so a
+    #: backend whose transport is inherently slower than the global default — a local
+    #: multi-engine scraper, not an API call — is not killed before it can answer.
+    budget_ms: int = 0
     #: Non-secret settings this backend reads (e.g. a base URL override).
     settings: tuple[str, ...] = field(default_factory=tuple)
 
