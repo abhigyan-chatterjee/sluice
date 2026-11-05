@@ -19,6 +19,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_SEARCH_TIMEOUT,
     SIGNUP_URLS,
     failure,
@@ -85,6 +86,7 @@ class XaiBackend(Backend):
         if missing:
             return failure(missing, kind="config")
         safe_limit = max(1, min(int(limit), 20))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         data, error = request_json(
             "POST",
             f"{self.base_url}/responses",
@@ -99,7 +101,7 @@ class XaiBackend(Backend):
                 "tools": [{"type": "web_search"}],
                 "include": ["no_inline_citations"],
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             return error

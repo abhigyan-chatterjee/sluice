@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_SEARCH_TIMEOUT,
     SIGNUP_URLS,
@@ -88,6 +89,7 @@ class PerplexityBackend(Backend):
         if missing:
             return failure(missing, kind="config")
         safe_limit = max(1, min(int(limit), MAX_SEARCH_RESULTS))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         data, error = request_json(
             "POST",
             f"{self.base_url}/search",
@@ -98,7 +100,7 @@ class PerplexityBackend(Backend):
                 "max_results": safe_limit,
                 "search_context_size": "low",
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             return error

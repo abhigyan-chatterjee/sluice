@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_SEARCH_TIMEOUT,
     extract_error,
@@ -60,17 +61,18 @@ class ExaBackend(Backend):
         **kwargs: Any,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 20))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         if self.key:
-            return self._search_keyed(query, safe_limit)
-        return self._search_keyless(query, safe_limit)
+            return self._search_keyed(query, safe_limit, effective)
+        return self._search_keyless(query, safe_limit, effective)
 
-    def _search_keyless(self, query: str, limit: int) -> dict[str, Any]:
+    def _search_keyless(self, query: str, limit: int, timeout: float = DEFAULT_SEARCH_TIMEOUT) -> dict[str, Any]:
         text, error = mcp_call(
             EXA_MCP_URL,
             "web_search_exa",
             {"query": query, "numResults": limit},
             vendor="exa",
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=timeout,
         )
         if error is not None:
             return error
@@ -79,7 +81,7 @@ class ExaBackend(Backend):
                 "out_of_credit": False, "retry_after": None, "status": 200, "kind": "ok",
                 "mode": "keyless"}
 
-    def _search_keyed(self, query: str, limit: int) -> dict[str, Any]:
+    def _search_keyed(self, query: str, limit: int, timeout: float = DEFAULT_SEARCH_TIMEOUT) -> dict[str, Any]:
         data, error = request_json(
             "POST",
             f"{EXA_API_URL}/search",
@@ -91,7 +93,7 @@ class ExaBackend(Backend):
                 "type": "auto",
                 "contents": {"highlights": True},
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=timeout,
         )
         if error is not None:
             return error

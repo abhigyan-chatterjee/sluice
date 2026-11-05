@@ -19,6 +19,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_SEARCH_TIMEOUT,
     SIGNUP_URLS,
     decode_response,
@@ -81,6 +82,7 @@ class BraveBackend(Backend):
         missing = self.missing_message()
         if missing:
             return failure(missing, kind="config")
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         params: dict[str, Any] = {"q": query, "count": max(1, min(int(limit), 20))}
         if freshness:
             params["freshness"] = freshness
@@ -93,7 +95,7 @@ class BraveBackend(Backend):
                 "X-Subscription-Token": self.key,
                 "Accept": "application/json",
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             body = decode_response(response) if response is not None else ""

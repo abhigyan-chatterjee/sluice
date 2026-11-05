@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 from . import Backend, BackendSpec
-from ._http import failure, request_json, search_row
+from ._http import call_timeout, failure, request_json, search_row
 
 SPEC = BackendSpec(
     id="searxng",
@@ -58,6 +58,7 @@ class SearxngBackend(Backend):
                 "SEARXNG_URL is not set. Point it at a running SearXNG instance, for example "
                 "http://localhost:8080 (docker/searxng/ ships one with JSON enabled)."
             )
+        effective = call_timeout(kwargs, 15.0)
         params: dict[str, Any] = {"q": query, "format": "json", "pageno": 1}
         if freshness:
             params["time_range"] = freshness
@@ -67,7 +68,7 @@ class SearxngBackend(Backend):
             vendor="searxng",
             params=params,
             headers={"Accept": "application/json"},
-            timeout=15.0,
+            timeout=effective,
         )
         if error is not None:
             if error.get("kind") == "bad_payload":

@@ -2,8 +2,8 @@
 
 Three contracts meet in this file:
 
-* PLAN.md:53 — the provider class is the only thing ``register(ctx)`` wires besides the
-  CLI command.
+* PLAN.md:53 — the provider class is the only thing ``register(ctx)`` wires besides the CLI
+  command and the bundled skill.
 * DESIGN.md:126-134 — one provider named ``sluice``, advertising both search and extract;
   keys resolve through ``agent.secret_scope`` so profile multiplexing is respected, and no
   Hermes-internal provider module is imported.
@@ -11,16 +11,17 @@ Three contracts meet in this file:
   returns a per-URL list, failure is ``{"success": False, "error": str}``, and nothing
   raises across the boundary.
 
-Scope at T1: the class, its capability flags and the failure envelopes. The router that
-fills them is T3 (``sluice/router.py``), so ``is_available()`` answers ``False`` — a
-provider that reported itself ready while every call failed would light the native
-``web_search``/``web_extract`` tools for a backend with nothing behind them. T3 replaces
-that method with the policy in DESIGN.md:83-88.
+Availability (DESIGN.md:83-88): ``is_available()`` is true when any keyed backend has
+credentials or a local SearXNG URL is configured. ``is_keyless_available()`` is true while
+the keyless tier is enabled, even with zero keys, and never makes ``is_available()`` true.
+With no keys and keyless disabled both are false, which is honest and lets ``hermes tools``
+say so.
 """
 
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any, Dict
 
 try:  # Hermes runtime: the real ABC, so isinstance() and the registry agree.
@@ -76,11 +77,6 @@ SECRET_ENVS: tuple[str, ...] = (
     "TINYFISH_API_KEY",
 )
 
-_NOT_WIRED = (
-    "{surface} is registered but not routed yet: {task} implements it. "
-    "See REQUIREMENTS.md for the acceptance criteria."
-)
-
 
 def _secret(name: str) -> str:
     """Resolve one credential, profile-scope aware, without ever raising.
@@ -112,10 +108,13 @@ class SluiceWebSearchProvider(_WebSearchProviderBase):
     display_name = "Sluice"
 
     def __init__(self, ctx: Any = None) -> None:
-        # The PluginContext is held for settings reads (ctx.get_config) by later tasks; it
-        # is never used to write Hermes-level config, which goes through `hermes config set`
-        # (DESIGN.md:59-64).
+        # The PluginContext is held for settings reads (ctx.get_config). It is never used to
+        # write Hermes-level config, which goes through `hermes config set` (DESIGN.md:59-64).
         self._ctx = ctx
+        self._router: Any = None
+        self._settings: Dict[str, Any] | None = None
+        self._store: Any = None
+        self._lock = threading.Lock()
 
     # ── capability flags ────────────────────────────────────────────────────────────
 
@@ -125,13 +124,37 @@ class SluiceWebSearchProvider(_WebSearchProviderBase):
     def supports_extract(self) -> bool:
         return True
 
+    def settings(self) -> Dict[str, Any]:
+        """Resolved settings; cheap enough for the ``hermes tools`` paint, and cached."""
+        if self._settings is None:
+            from .config import load_settings
+
+            self._settings = load_settings(self._ctx)
+        return self._settings
+
     def is_available(self) -> bool:
-        """False until routing exists (T3). Cheap: no network (DESIGN.md:83-88, T3)."""
-        return False
+        """True when a keyed backend has credentials or a local SearXNG is configured.
+
+        Cheap and offline: it reads settings and environment only (DESIGN.md:83-88).
+        """
+        try:
+            settings = self.settings()
+        except Exception:  # noqa: BLE001 - never raise from an availability check
+            return False
+        if str(settings.get("searxng_url") or "").strip():
+            return True
+        return any(bool(str(settings.get(env) or "").strip()) for env in SECRET_ENVS)
 
     def is_keyless_available(self) -> bool:
-        """False until routing exists (T3). DESIGN.md:83-88 sets the real policy."""
-        return False
+        """True while the keyless tier is enabled, even with zero keys.
+
+        This must never make :meth:`is_available` true: a keyless provider is not a
+        configured one (DESIGN.md:86-88, REQUIREMENTS.md §4.1).
+        """
+        try:
+            return bool(self.settings().get("keyless_enabled", True))
+        except Exception:  # noqa: BLE001
+            return True
 
     def get_setup_schema(self) -> Dict[str, Any]:
         """Row for the ``hermes tools`` picker: no key prompt, keys live in Settings."""
@@ -142,15 +165,52 @@ class SluiceWebSearchProvider(_WebSearchProviderBase):
             "env_vars": [],
         }
 
+    # ── routing ─────────────────────────────────────────────────────────────────────
+
+    def router(self):
+        """Build the router (and its store) on first use, once per provider instance."""
+        if self._router is not None:
+            return self._router
+        with self._lock:
+            if self._router is not None:
+                return self._router
+            from .config import plugin_data_dir
+            from .router import Router
+            from .store import open_store
+
+            settings = self.settings()
+            try:
+                self._store = open_store(plugin_data_dir(self._ctx), settings=settings)
+            except Exception:  # noqa: BLE001 - a read-only data dir must not kill search
+                self._store = None
+            self._router = Router(store=self._store, settings=settings)
+            return self._router
+
+    def close(self) -> None:
+        with self._lock:
+            if self._store is not None:
+                try:
+                    self._store.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._store = None
+            self._router = None
+
     # ── tool surface ────────────────────────────────────────────────────────────────
 
     def search(self, query: str, limit: int = 5) -> dict[str, Any]:
         """Return a failure envelope instead of raising across the provider boundary."""
         if not isinstance(query, str) or not query.strip():
             return {"success": False, "error": "sluice: empty query"}
-        return {"success": False, "error": _NOT_WIRED.format(surface="search", task="T3 (router)")}
+        try:
+            return self.router().search(query, limit)
+        except Exception as exc:  # noqa: BLE001 - the tool layer never sees a traceback
+            return {"success": False, "error": f"sluice: search failed: {exc}"}
 
     def extract(self, urls: list[str], **kwargs: Any) -> list[dict[str, Any]]:
         """Per-URL failure items; one bad URL must never fail the batch (DESIGN.md:68-72)."""
-        reason = _NOT_WIRED.format(surface="extract", task="T7 (fetch ladder)")
-        return [{"url": url, "error": reason} for url in urls]
+        targets = [str(url) for url in urls] if urls else []
+        try:
+            return self.router().extract(targets, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            return [{"url": url, "error": f"sluice: extract failed: {exc}"} for url in targets]

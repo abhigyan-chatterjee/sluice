@@ -534,3 +534,17 @@ def query_within_chars(query: str, max_chars: int) -> tuple[str, bool]:
     if cut > max_chars // 2:
         head = head[:cut]
     return head.rstrip(), True
+
+
+def call_timeout(kwargs: Mapping[str, Any] | None, default: float) -> float:
+    """Per-call timeout from the router's budget, clamped to the vendor default.
+
+    The router's per-backend budget (2.5 s) is shorter than any vendor default, so this only
+    ever shortens a request. A budget never makes a vendor call slower than its own limit.
+    """
+    raw = (kwargs or {}).get("timeout")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(0.5, min(default, value))

@@ -18,6 +18,7 @@ from typing import Any, Sequence
 
 from . import KNOWN_PRICE_PER_CALL_USD, Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_SEARCH_TIMEOUT,
     SIGNUP_URLS,
@@ -80,6 +81,7 @@ class DeepseekBackend(Backend):
         if not clipped:
             return failure("DeepSeek needs a non-empty query", kind="config")
         count = max(1, min(int(limit), MAX_COUNT))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         data, error = request_json(
             "POST",
             f"{self.base_url}/v1/tools/search",
@@ -92,7 +94,7 @@ class DeepseekBackend(Backend):
                 "localization": "",
                 "need_content": False,
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             if error.get("status") == 404:

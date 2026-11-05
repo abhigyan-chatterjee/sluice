@@ -109,7 +109,7 @@ class Backend:
         return self.spec.keyless_capable
 
     def missing_message(self) -> str:
-        """Actionable configuration error, or ``\"\"`` when the backend can run."""
+        """Actionable configuration error, or ``""`` when the backend can run."""
         from ._http import missing_key_message
 
         if self.spec.id == "searxng" and not str(self.settings.get("searxng_url") or "").strip():
@@ -118,16 +118,25 @@ class Backend:
                 "http://localhost:8080 (docker/searxng/ in this repository ships one with "
                 "search.formats: [html, json])."
             )
-        if self.spec.secret_env and not self.key and not (self.keyless_capable and self.keyless_enabled):
+        if self.spec.cheapest_tier == "local":
+            return ""
+        if self.key:
+            return ""
+        if self.keyless_capable and self.keyless_enabled:
+            return ""
+        if self.spec.secret_env:
             return missing_key_message(self.spec.secret_env, self.spec.id)
-        return ""
+        return (
+            f"{self.spec.label} is a keyless-only backend and the keyless tier is disabled. "
+            "Enable keyless_enabled in Settings ▸ Plugins, or configure a keyed backend."
+        )
 
     def mode(self) -> str:
         """``local`` | ``keyless`` | ``keyed`` | ``unavailable`` — never a network call."""
-        if self.spec.cheapest_tier == "local":
-            return "local" if not self.missing_message() else "unavailable"
         if self.missing_message():
             return "unavailable"
+        if self.spec.cheapest_tier == "local":
+            return "local"
         return "keyed" if self.key else "keyless"
 
     def is_configured(self) -> bool:

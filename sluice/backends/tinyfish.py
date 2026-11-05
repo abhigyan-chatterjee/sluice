@@ -11,6 +11,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_SEARCH_TIMEOUT,
     SIGNUP_URLS,
     as_list,
@@ -57,6 +58,7 @@ class TinyfishBackend(Backend):
         missing = self.missing_message()
         if missing:
             return failure(missing, kind="config")
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         response, error = send(
             "GET",
             TINYFISH_ENDPOINT,
@@ -67,7 +69,7 @@ class TinyfishBackend(Backend):
                 "max_results": max(1, min(int(limit), 50)),
             },
             headers={"X-API-Key": self.key, "Accept": "application/json"},
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             body = decode_response(response) if response is not None else ""

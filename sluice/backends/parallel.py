@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_SEARCH_TIMEOUT,
     as_list,
@@ -62,17 +63,18 @@ class ParallelBackend(Backend):
         **kwargs: Any,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 20))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         if self.key:
-            return self._search_keyed(query, safe_limit)
-        return self._search_keyless(query, safe_limit)
+            return self._search_keyed(query, safe_limit, effective)
+        return self._search_keyless(query, safe_limit, effective)
 
-    def _search_keyless(self, query: str, limit: int) -> dict[str, Any]:
+    def _search_keyless(self, query: str, limit: int, timeout: float = DEFAULT_SEARCH_TIMEOUT) -> dict[str, Any]:
         text, error = mcp_call(
             PARALLEL_MCP_URL,
             "web_search",
             {"objective": query, "search_queries": [query], "session_id": SESSION_ID},
             vendor="parallel",
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=timeout,
         )
         if error is not None:
             return error
@@ -95,7 +97,7 @@ class ParallelBackend(Backend):
                 "out_of_credit": False, "retry_after": None, "status": 200, "kind": "ok",
                 "mode": "keyless"}
 
-    def _search_keyed(self, query: str, limit: int) -> dict[str, Any]:
+    def _search_keyed(self, query: str, limit: int, timeout: float = DEFAULT_SEARCH_TIMEOUT) -> dict[str, Any]:
         data, error = request_json(
             "POST",
             f"{PARALLEL_API_URL}/v1/search",
@@ -107,7 +109,7 @@ class ParallelBackend(Backend):
                 "max_results": limit,
                 "mode": "fast",
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=timeout,
         )
         if error is not None:
             return error

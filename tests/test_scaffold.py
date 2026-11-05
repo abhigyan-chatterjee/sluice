@@ -99,27 +99,44 @@ def test_provider_is_constructible_without_hermes():
     assert provider.supports_extract() is True
 
 
-def test_provider_never_raises_across_the_boundary():
-    """DESIGN.md:68-72: failures are envelopes, and one bad URL never fails the batch."""
+def test_provider_never_raises_across_the_boundary(monkeypatch):
+    """DESIGN.md:68-72: failures are envelopes, and one bad URL never fails the batch.
+
+    A broken router stands in for every real failure mode, so this test never touches the
+    network or the user's configured backends.
+    """
     from sluice.provider import SluiceWebSearchProvider
 
+    class BrokenRouter:
+        def search(self, query, limit=5):
+            raise RuntimeError("store is not writable")
+
+        def extract(self, urls, **kwargs):
+            raise RuntimeError("store is not writable")
+
     provider = SluiceWebSearchProvider()
+    monkeypatch.setattr(provider, "router", lambda: BrokenRouter())
     result = provider.search("anything", limit=3)
     assert result["success"] is False
-    assert isinstance(result["error"], str) and result["error"]
+    assert isinstance(result["error"], str) and "store is not writable" in result["error"]
 
     items = provider.extract(["https://example.com/a", "https://example.com/b"])
     assert [item["url"] for item in items] == ["https://example.com/a", "https://example.com/b"]
     assert all(item["error"] for item in items)
 
 
-def test_availability_is_false_before_the_router_exists():
-    """A provider that cannot route must not advertise itself (T1 decision, see REQUIREMENTS.md)."""
-    from sluice.provider import SluiceWebSearchProvider
+def test_provider_availability_follows_the_router_policy():
+    """T3 replaced the T1 ``False`` stub: keys or a local SearXNG make it available."""
+    from sluice.config import DEFAULTS
+    from sluice.provider import SECRET_ENVS, SluiceWebSearchProvider
 
     provider = SluiceWebSearchProvider()
+    provider._settings = {**DEFAULTS, "keyless_enabled": False, **{env: "" for env in SECRET_ENVS}}
     assert provider.is_available() is False
     assert provider.is_keyless_available() is False
+
+    provider._settings = {**DEFAULTS, **{env: "" for env in SECRET_ENVS}, "BRAVE_API_KEY": "k"}
+    assert provider.is_available() is True
 
 
 # ── registration ────────────────────────────────────────────────────────────────

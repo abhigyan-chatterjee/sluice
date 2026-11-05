@@ -14,6 +14,7 @@ from typing import Any, Sequence
 
 from . import Backend, BackendSpec
 from ._http import (
+    call_timeout,
     DEFAULT_FETCH_TIMEOUT,
     DEFAULT_SEARCH_TIMEOUT,
     as_list,
@@ -66,6 +67,7 @@ class TavilyBackend(Backend):
         **kwargs: Any,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 20))
+        effective = call_timeout(kwargs, DEFAULT_SEARCH_TIMEOUT)
         data, error = request_json(
             "POST",
             f"{self.base_url}/search",
@@ -77,7 +79,7 @@ class TavilyBackend(Backend):
                 "include_raw_content": False,
                 "include_images": False,
             },
-            timeout=DEFAULT_SEARCH_TIMEOUT,
+            timeout=effective,
         )
         if error is not None:
             return error
