@@ -72,8 +72,9 @@ is per backend id, persisted, and survives a restart.
 
 ### The two reconciled thresholds
 
-`PLAN.md` and `DESIGN.md` disagree on two numbers. Both are resolved in the code, and both
-resolutions are recorded in `REQUIREMENTS.md` §2.2.
+`PLAN.md` and `DESIGN.md` disagree on two numbers. These are the two pairs in `PLAN.md`'s
+"Closed gaps" item 2 (`PLAN.md:18-23`). Both are resolved in the code, and both resolutions
+are recorded in `REQUIREMENTS.md` §2.2.
 
 **1. Cache eviction: 200 MB trigger, 150 MB low-water mark.** `PLAN.md:21-23` says "if the
 DB exceeds 150 MB, delete expired rows first, then least-recently-hit rows down to 200 MB".

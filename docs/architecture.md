@@ -52,6 +52,18 @@ Hermes tool layer
 | `demo/fixture_server.py` | Deterministic HTTP targets for the demo and the ladder tests. | `87-123` |
 | `docker/searxng/` | Reference SearXNG with `search.formats: [html, json]`, bound to localhost. | whole file |
 
+## Build plan traceability
+
+Each module carries the `PLAN.md` task that built it: T1 scaffold (`plugin.yaml`,
+`__init__.py`, `pyproject.toml`), T2 store, T3 router, T4 to T6 adapters (each
+`BackendSpec.task` names T4, T5 or T6), T7 Fetch Ladder, T8 manager, T9 CLI, T10 dashboard
+API, T11 pane, T12 skill and disclosures, T13 test sweep, T14 demo fixture and submission.
+
+The four items `PLAN.md` settled before the build are its "Closed gaps": vendor payloads in
+`references/endpoints.md`, the cache and circuit numbers implemented in `sluice/store.py`,
+the pane layout (`PANES_AREA`, `registerSettingsPage`, `PALETTE_AREA`), and the deterministic
+demo fixture in `demo/fixture_server.py`.
+
 ## The two tool contracts
 
 Search returns an envelope, never an exception. The envelope shape:
