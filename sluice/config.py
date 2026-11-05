@@ -53,6 +53,11 @@ def normalize_searxng_url(raw: Any) -> tuple[str, str]:
     router never builds a request from it and the user gets the reason instead of httpx's own
     failure long after they typed the address. Trailing slashes are removed so
     ``base + "/search"`` can never double one.
+
+    The port is read here on purpose: ``urlsplit`` parses it lazily, so ``http://host:abc``
+    and a port past 65535 pass the split and only raise when ``parts.port`` is touched.
+    Left unread they reach ``httpx``, whose ``InvalidURL`` is not an ``httpx.HTTPError`` and
+    so escapes the adapter boundary instead of being refused with a reason (F4 residual).
     """
     text = str(raw or "").strip()
     if not text:
@@ -64,6 +69,7 @@ def normalize_searxng_url(raw: Any) -> tuple[str, str]:
         )
     try:
         parts = urlsplit(text)
+        _ = parts.port
     except ValueError as exc:
         return "", f"SEARXNG_URL is not a parseable URL: {text!r} ({exc})"
     scheme = parts.scheme.lower()
@@ -71,8 +77,16 @@ def normalize_searxng_url(raw: Any) -> tuple[str, str]:
         return "", (
             f"SEARXNG_URL must use http or https (got scheme {parts.scheme!r} in {text!r})."
         )
-    if not parts.netloc:
+    # ``http://:8888`` has a netloc but no host, and an unbracketed IPv6 literal
+    # (``http://::1:8888``) gives urlsplit no hostname either: both would reach httpx as a
+    # request to nowhere.
+    if not parts.netloc or not parts.hostname:
         return "", f"SEARXNG_URL has no host: {text!r}."
+    # httpx refuses an ASCII control character anywhere in the URL with ``InvalidURL``, which
+    # the adapter boundary does not catch; ``urlsplit`` keeps them (it only deletes CR/LF/TAB).
+    bad = next((char for char in f"{parts.netloc}{parts.path}" if char.isascii() and not char.isprintable()), "")
+    if bad:
+        return "", f"SEARXNG_URL contains a non-printable ASCII character {bad!r}: {text!r}."
     if parts.query or parts.fragment:
         return "", (
             f"SEARXNG_URL must point at the instance root or a path prefix, without a query "

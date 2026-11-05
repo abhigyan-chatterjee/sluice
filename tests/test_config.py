@@ -7,6 +7,7 @@ what makes that claim true: a default changed in one place and not the other fai
 from __future__ import annotations
 
 import re
+import socket
 from pathlib import Path
 
 from sluice.backends import BACKEND_MODULES
@@ -266,3 +267,83 @@ def test_the_backend_reports_the_malformed_reason_not_a_missing_variable():
     result = backend.search("q")
     assert result["ok"] is False
     assert "including the scheme" in result["error"]
+
+
+def test_a_port_urlsplit_defers_is_refused_before_httpx_sees_it(monkeypatch):
+    """F4 residual: ``parts.port`` raises lazily, so the validator must read it.
+
+    ``urlsplit`` accepts ``http://host:abc`` and ``http://::1:8888`` and only raises when
+    ``parts.port`` is read; the validator never read it, so both reached httpx, whose
+    ``InvalidURL`` is not an ``httpx.HTTPError`` and escaped the adapter boundary. A
+    colon-only netloc (``http://:8888``) parses with no hostname at all.
+    """
+    from sluice.backends import make_backend
+
+    cases = {
+        "http://host:abc": "not a parseable URL",
+        "http://host:99999": "not a parseable URL",
+        "http://::1:8888": "not a parseable URL",
+        "http://:8888": "has no host",
+    }
+    for raw, marker in cases.items():
+        monkeypatch.setenv("SEARXNG_URL", raw)
+        settings = load_settings(FakeContext({"searxng_url": ""}))
+        assert settings["searxng_url"] == "", raw
+        assert marker in settings["searxng_url_error"], (raw, settings["searxng_url_error"])
+        # The refusal is what the adapter reports: no request, no httpx exception.
+        result = make_backend("searxng", settings).search("q")
+        assert result["ok"] is False, raw
+        assert marker in result["error"], (raw, result["error"])
+
+
+def test_a_non_printable_character_is_refused_before_it_reaches_httpx():
+    """``urlsplit`` keeps a NUL or DEL and httpx rejects it with ``InvalidURL``.
+
+    Same escape route as a bad port (``InvalidURL`` is not an ``httpx.HTTPError``), and a
+    value like this can only arrive from an env var or a hand-edited config, so the reason
+    is the only signal the user gets.
+    """
+    for raw in ("http://host\x00:8888", "http://host:8888/\x7f", "http://host:8888/\x01"):
+        url, error = normalize_searxng_url(raw)
+        assert url == "", raw
+        assert "non-printable" in error, (raw, error)
+
+
+def test_every_validator_accepted_address_survives_the_http_boundary():
+    """No address the validator accepts may raise out of ``SearxngBackend.search()``.
+
+    The port is bound and closed first, so a request fails at connect time: that is an
+    ``httpx.HTTPError`` the adapter already maps to a failure dict. A value httpx cannot
+    parse raises ``httpx.InvalidURL`` instead, which is not an ``HTTPError`` and is what
+    this test watches for: the candidates below include every address the other tests
+    expect to be refused, so re-accepting one fails here rather than in the router.
+    """
+    from sluice.backends import make_backend
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    closed_port = listener.getsockname()[1]
+    listener.close()
+    candidates = (
+        f"http://127.0.0.1:{closed_port}",
+        f"http://127.0.0.1:{closed_port}/searxng/",
+        f"https://127.0.0.1:{closed_port}",
+        "http://host:abc",
+        "http://host:99999",
+        "http://::1:8888",
+        "http://:8888",
+        "http://host\x00:8888",
+        "http://host:8888/\x7f",
+    )
+    accepted = 0
+    for raw in candidates:
+        url, error = normalize_searxng_url(raw)
+        if error:
+            continue
+        accepted += 1
+        backend = make_backend("searxng", {"searxng_url": url, "searxng_url_error": error})
+        result = backend.search("q", timeout=1.0)
+        assert isinstance(result, dict), raw
+        assert result["ok"] is False, raw
+        assert result["error"], raw
+    assert accepted == 3, "the three loopback addresses must still be accepted"

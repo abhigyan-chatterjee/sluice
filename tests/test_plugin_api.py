@@ -344,6 +344,42 @@ def test_save_settings_surfaces_a_refusal(env):
     assert "managed install" in result["error"]
 
 
+def test_settings_payload_carries_the_searxng_refusal_reason(env):
+    """F4 residual: the pane re-reads an empty URL, so the reason must travel with it."""
+    reason = "SEARXNG_URL has no host: 'http://:8888'."
+    payload = api.settings_payload(settings={**env["settings"], "searxng_url_error": reason})
+    assert payload["values"]["searxng_url"] == ""
+    assert payload["searxng_url_error"] == reason
+
+
+def test_settings_payload_reports_no_searxng_error_for_a_missing_url(env):
+    payload = api.settings_payload(settings=env["settings"])
+    assert payload["searxng_url_error"] == ""
+
+
+def test_save_settings_refuses_a_searxng_url_the_validator_rejects(env):
+    written: list[dict] = []
+    result = api.save_settings_payload(
+        {"searxng_url": "http://host:abc"}, writer=lambda values: written.append(dict(values)) or list(values)
+    )
+    assert result["ok"] is False
+    assert "not a parseable URL" in result["error"]
+    assert written == [], "a refused URL must not be written before its reason is known"
+
+
+def test_save_settings_still_writes_an_empty_or_usable_searxng_url(env):
+    for value in ("", "http://127.0.0.1:8888"):
+        written: list[dict] = []
+
+        def writer(values, seen=written):
+            seen.append(dict(values))
+            return list(values)
+
+        result = api.save_settings_payload({"searxng_url": value}, writer=writer)
+        assert result["ok"] is True, (value, result)
+        assert written == [{"searxng_url": value}]
+
+
 def test_setup_dry_run_lists_three_routes(env, monkeypatch):
     seen: list[bool] = []
 

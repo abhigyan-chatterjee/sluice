@@ -531,6 +531,9 @@ function SettingsPage({ ctx }) {
 
   const plans = (payload && payload.plans) || {}
   const values = draft
+  // A refused SEARXNG_URL is dropped to '' by the backend, so the pane would show an empty
+  // field with no explanation; the reason travels in the settings payload (F4 residual).
+  const searxngError = (payload && payload.searxng_url_error) || ''
 
   const showRoutes = async () => {
     try {
@@ -580,7 +583,13 @@ function SettingsPage({ ctx }) {
               value: values.searxng_url || '',
               onChange: setValue('searxng_url'),
               hint: 'empty disables the local backend'
-            })
+            }),
+            searxngError
+              ? jsx('span', {
+                  className: 'text-destructive',
+                  children: `stored value refused: ${searxngError}`
+                })
+              : null
           ]
         }),
         jsxs('div', {

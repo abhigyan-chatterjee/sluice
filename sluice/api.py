@@ -21,7 +21,14 @@ from typing import Any, Callable, Mapping
 
 from . import __version__
 from .backends import BACKEND_MODULES, make_backend, specs
-from .config import DEFAULTS, backend_plan, configured_backends, load_settings, plugin_data_dir
+from .config import (
+    DEFAULTS,
+    backend_plan,
+    configured_backends,
+    load_settings,
+    normalize_searxng_url,
+    plugin_data_dir,
+)
 from .hostctx import host_set_config
 from .manage import (
     clear_outer_web_cache,
@@ -394,6 +401,9 @@ def settings_payload(*, settings: Mapping[str, Any] | None = None) -> dict[str, 
     return {
         "ok": True,
         "values": {key: settings.get(key, DEFAULTS.get(key)) for key in EDITABLE_KEYS},
+        # F4: ``load_settings`` drops a rejected SEARXNG_URL, so without this the pane
+        # re-reads an empty field and is never told what was wrong with what it saved.
+        "searxng_url_error": str(settings.get("searxng_url_error") or ""),
         "plans": _plan_values(settings),
         "editable": list(EDITABLE_KEYS),
         "plan_key_pattern": "plan_<vendor>",
@@ -441,8 +451,8 @@ def save_settings_payload(
     never a private core module and never a direct ``config.yaml`` edit (DESIGN.md:63-64).
     That call keeps the managed-install and administrator-managed refusals and the
     cross-process lock. Keys are written one at a time, so a refusal after a success leaves
-    the earlier keys written; types are checked up front so that is the only way to stop
-    halfway.
+    the earlier keys written; types and the SEARXNG address are checked up front so a bad
+    value cannot be stored as "saved" and silently dropped on the next read (F4 residual).
     """
     if not isinstance(values, Mapping) or not values:
         return {"ok": False, "error": "no settings supplied"}
@@ -453,6 +463,12 @@ def save_settings_payload(
         reason = _refuse_wrong_type(str(key), value)
         if reason:
             return {"ok": False, "error": reason}
+    if "searxng_url" in values:
+        # The runtime drops a rejected address (``load_settings``), so accepting it here
+        # would report "saved" and then show an empty field. Refuse it with the same reason.
+        _, searxng_error = normalize_searxng_url(values["searxng_url"])
+        if searxng_error:
+            return {"ok": False, "error": searxng_error}
     if writer is None:
         set_config = host_set_config()
         if set_config is None:
