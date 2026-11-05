@@ -7,6 +7,7 @@ in ``tests/test_backends.py``.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
@@ -241,6 +242,33 @@ def test_a_quota_failure_falls_through_and_opens_the_circuit_for_an_hour(store):
     assert state.quota_exhausted_until > state.last_error_at
 
 
+def test_a_circuit_skipped_primary_still_marks_the_answer_as_a_fallback(store, caplog):
+    """F1 residual: a primary held back by its breaker is still a fallback answer.
+
+    The breaker removes the backend from the candidate list before the loop, so the old
+    ``attempted > 0`` test never saw it: the answer from the backup looked like a first
+    choice in the row metadata, and nothing was logged.
+    """
+    primary = FakeBackend("a_primary", "free")
+    backup = FakeBackend("z_backup", "free")
+    for _ in range(3):
+        store.record_failure("a_primary", error="HTTP 503", now=time.time())
+    assert store.circuit_reason("a_primary")
+    router = router_with(primary, backup, store=store)
+    assert [c.id for c in router.candidates("search")] == ["z_backup"]
+
+    with caplog.at_level(logging.WARNING, logger="sluice.router"):
+        result = router.search("q")
+
+    assert result["success"] is True
+    row = result["data"]["web"][0]
+    assert row["backend"] == "z_backup"
+    assert row["fallback_used"] is True
+    assert primary.calls == []
+    warnings = [record for record in caplog.records if record.levelno >= logging.WARNING]
+    assert any("a_primary" in record.getMessage() for record in warnings)
+
+
 def test_adapter_exception_is_a_failure_not_a_crash():
     class Exploding(FakeBackend):
         def search(self, query, limit=5, **kwargs):
@@ -287,6 +315,45 @@ def test_a_declared_window_never_exceeds_the_total_budget():
     )
     router_with(backend, total_budget_ms=3000).search("q")
     assert backend.calls[0]["timeout"] == pytest.approx(3.0)
+
+
+class GreedyBackend(FakeBackend):
+    """Consumes exactly the window the router handed it, then fails.
+
+    This is what ``ddgs`` did on a miss: the child ran until the router's timeout and then
+    reported no results, so the attempt cost the whole window it was given.
+    """
+
+    def search(self, query, limit=5, **kwargs):
+        self.calls.append({"query": query, "limit": limit, **kwargs})
+        if self._clock is not None:
+            self._clock.advance(float(kwargs.get("timeout") or 0.0))
+        return {"ok": False, "error": f"{self.spec.id} failed: No results found."}
+
+
+def test_a_backend_that_eats_its_whole_window_cannot_starve_the_next():
+    """F1 residual: ddgs declares 8000 ms inside an 8000 ms total, so one miss ended the ladder.
+
+    A widened window is only allowed to use what is left *after* reserving one default window
+    for the candidates behind it; the next candidate must still be attemptable and answer.
+    """
+    clock = FakeClock()
+    greedy = GreedyBackend("ddgs", "keyless", clock=clock)
+    greedy.spec = BackendSpec(
+        id="ddgs", label="ddgs", tiers=("keyless",), search=True, extract=False, budget_ms=8000
+    )
+    fresh = FakeBackend("keenable", "keyless", clock=clock)
+    router = router_with(greedy, fresh, clock=clock)
+
+    result = router.search("postgres vacuum full z3")
+
+    assert result["success"] is True
+    row = result["data"]["web"][0]
+    assert row["backend"] == "keenable"
+    assert row["fallback_used"] is True
+    # Still wider than the default window (F1 must not regress) and shorter than the total.
+    assert PER_BACKEND_BUDGET_MS / 1000.0 < greedy.calls[0]["timeout"] < TOTAL_BUDGET_MS / 1000.0
+    assert fresh.calls[0]["timeout"] == pytest.approx(PER_BACKEND_BUDGET_MS / 1000.0)
 
 
 def test_ddgs_asks_for_a_window_wider_than_the_global_default():
@@ -538,6 +605,23 @@ def test_a_negative_total_budget_is_clamped_and_never_raises():
     assert backend.calls[0]["timeout"] == pytest.approx(0.001)
 
 
+@pytest.mark.parametrize("bad_budget", ["eight thousand", [8000], {"ms": 8000}, None])
+def test_a_non_numeric_declared_window_cannot_escape_search(bad_budget):
+    """``Router.search`` never raises: a malformed ``budget_ms`` means "no declared window".
+
+    It used to go straight into ``int()`` while the search was already running, so a broken
+    spec failed the whole search instead of just losing its widening.
+    """
+    backend = FakeBackend("only", "keyless")
+    backend.spec = BackendSpec(
+        id="only", label="only", tiers=("keyless",), search=True, extract=False,
+        budget_ms=bad_budget,
+    )
+    result = router_with(backend).search("q")
+    assert result["success"] is True
+    assert backend.calls[0]["timeout"] == pytest.approx(PER_BACKEND_BUDGET_MS / 1000.0)
+
+
 # ── a cached answer is only valid while its backend stays routable ─────────────
 
 
@@ -606,6 +690,8 @@ def test_a_cached_hit_is_dropped_when_the_winning_backends_circuit_opens(store):
     second = router.search("zstd")
     assert second["success"] is False
     assert "circuit" in second["error"]
+    # Named once: the loop's skip and skip_reasons() must not both report the same backend.
+    assert second["error"].count("only:") == 1
     assert len(backend.calls) == 1
 
 

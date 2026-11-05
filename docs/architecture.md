@@ -108,21 +108,29 @@ tools safely.
 4. `Router.candidates` builds the candidate list: drop backends without the requested
    capability, without a usable access mode, outside `tier_order`, or with an open circuit
    or exhausted quota. Sort by tier index, then query-class preference, then latency EMA,
-   then id.
+   then id. The search loop asks for the unfiltered list (`respect_store=False`) so a
+   backend the breaker holds back is still counted and reported rather than silently
+   disappearing from the ladder.
 5. Sequential attempts. Before each one: re-check the circuit, compute the remaining total
    budget, then set the attempt window to
-   `max(per_backend_budget_ms, spec.budget_ms)` and clamp it to what remains.
+   `max(per_backend_budget_ms, spec.budget_ms)`, clamped to what remains.
    `per_backend_budget_ms` defaults to 2500 ms; a backend that declares no `budget_ms` gets
    that default. A backend with a slower transport may declare a wider window of its own:
    `ddgs` declares 8000 ms because it is a local multi-engine scrape rather than an API
    call; measured on one development machine, a real call takes 1.9 s to 7.4 s (median
    6.3 s).
-   The `total_budget_ms` default of 8000 ms bounds every attempt, so a wider per-backend
-   window can widen one attempt but never extend the whole search. The resulting timeout is
-   handed to the adapter, so the budget is enforced, not measured after the fact.
+   The `total_budget_ms` default of 8000 ms is shared by the whole ladder, not granted to
+   each attempt. While another candidate is still behind this one, one default window is
+   reserved out of what is left, so a widened attempt is capped at `total - per_backend`
+   and cannot starve the rest of the ladder. With the defaults `ddgs` gets 5500 ms and the
+   next candidate keeps its full 2500 ms; raising `total_budget_ms` is how `ddgs` gets its
+   whole declared 8000 ms. The resulting timeout is handed to the adapter, so the budget is
+   enforced, not measured after the fact.
 6. On the first success: stamp every row with `backend`, `tier`, `cached`,
-   `fallback_used` (true if any earlier candidate failed) and `elapsed_ms`, record health
-   and latency, cache the rows without the per-request metadata, and return.
+   `fallback_used` and `elapsed_ms`, record health and latency, cache the rows without the
+   per-request metadata, and return. `fallback_used` is true when an earlier candidate
+   failed or was held back by an open circuit or an exhausted quota window, and the router
+   logs one warning naming the winner and the reasons it had to fall back.
 7. On failure: record it, including quota classification, and continue. When the list is
    exhausted, append `skip_reasons()` and return one error that names each backend and its
    reason.

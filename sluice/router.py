@@ -8,13 +8,21 @@ Contract: PLAN.md:64-72.
 * Candidates inside a tier sort by latency EMA. A light query classifier biases that order
   (news versus docs) and can never move a paid backend above a free one: the tier index is
   the first sort key.
-* Each search gets a 2.5 s per-attempt budget and an 8 s total budget, run sequentially. A
-  backend may declare a wider per-attempt window through ``BackendSpec.budget_ms`` (``ddgs``
-  does, for its local multi-engine scrape); the total budget still bounds every attempt. The
+* Each search gets a 2.5 s per-attempt window and an 8 s total budget, run sequentially. The
+  total is shared: while another candidate is still behind this one, one default window is
+  reserved out of whatever is left, so a single attempt can never consume the whole ladder.
+  A backend may declare a wider per-attempt window through ``BackendSpec.budget_ms``
+  (``ddgs`` does, for its local multi-engine scrape); the declared value raises the attempt
+  up to the reserved ceiling, never past it. With the defaults that gives ddgs 5.5 s
+  (8 s total less the 2.5 s reserved for the next candidate) and leaves that candidate its
+  full window; raising ``total_budget_ms`` is how ddgs gets its whole declared 8 s. The
   window is passed to the adapter as its request timeout, so it is enforced rather than
   measured after the fact.
 * Every search row and extract item carries ``backend``, ``tier``, ``cached``,
-  ``fallback_used`` and ``elapsed_ms``.
+  ``fallback_used`` and ``elapsed_ms``. ``fallback_used`` is true when an earlier candidate
+  failed *or* was held back by an open circuit or an exhausted quota window; a successful
+  fallback also logs one warning naming the winner, the count of candidates that could not
+  answer, and their reasons.
 
 Search results are cached by normalized query plus filters and limit (900 s general, 300 s
 for news); extraction is cached per URL (3600 s), with a 60 s negative cache for a failed
@@ -24,6 +32,7 @@ URL so a dead link is not re-fetched on every call.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -38,6 +47,8 @@ from .store import (
     NS_SEARCH_NEWS,
     Store,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Cheapest first (PLAN.md:67, DESIGN.md:136-141). The runtime order comes from settings.
 TIER_ORDER: tuple[str, ...] = ("local", "keyless", "free", "paid")
@@ -160,6 +171,42 @@ def coerce_limit(raw: Any, default: int = 5, *, maximum: int | None = None) -> i
     return value if maximum is None else min(value, maximum)
 
 
+def coerce_budget_ms(raw: Any) -> int:
+    """A non-negative millisecond budget from an untrusted spec value.
+
+    ``BackendSpec.budget_ms`` is typed ``int``, but a third-party adapter or a test double
+    can hand over a string, a container or ``None``. ``Router.search()`` never raises, so a
+    malformed value means "no declared window" (``0``) instead of a ``ValueError`` that
+    would abort the whole search rather than merely skipping one backend's widening.
+    """
+    try:
+        value = int(raw)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, value)
+
+
+def attempt_window(
+    declared_ms: Any,
+    per_backend: float,
+    remaining: float,
+    *,
+    more_candidates: bool,
+) -> float:
+    """Seconds one attempt may take, in the shared total budget.
+
+    *per_backend* is the default window. *declared_ms* is what the backend asked for and can
+    only widen the attempt. While a candidate is still behind this one, one default window
+    is reserved out of *remaining* before a widened attempt may use it, so a slow backend
+    cannot starve the rest of the ladder; the reservation never shrinks an attempt below the
+    default window. *remaining* is the hard ceiling either way.
+    """
+    window = max(per_backend, coerce_budget_ms(declared_ms) / 1000.0)
+    if more_candidates:
+        window = min(window, max(per_backend, remaining - per_backend))
+    return max(0.0, min(window, remaining))
+
+
 class Router:
     """Sequential free-first router over the backend registry."""
 
@@ -197,8 +244,15 @@ class Router:
             self._backends[vendor] = make_backend(vendor, self._settings)
         return self._backends[vendor]
 
-    def candidates(self, capability: str = "search", query: str = "") -> list[Candidate]:
-        """Routable backends in tier order, then preference, then latency EMA."""
+    def candidates(
+        self, capability: str = "search", query: str = "", *, respect_store: bool = True
+    ) -> list[Candidate]:
+        """Routable backends in tier order, then preference, then latency EMA.
+
+        ``respect_store=False`` keeps candidates whose circuit is open or whose quota window
+        is exhausted. :meth:`search` asks for those so it can count them as skipped and label
+        a fallback answer correctly; every other caller wants the default, which drops them.
+        """
         order = tier_order(self._settings)
         qclass = classify_query(query) if query else "general"
         out: list[Candidate] = []
@@ -221,7 +275,7 @@ class Router:
             tier = backend.tier(plan)
             if tier not in order:
                 continue
-            if self._store is not None and not self._store.is_available(vendor):
+            if respect_store and self._store is not None and not self._store.is_available(vendor):
                 continue
             out.append(Candidate(backend=backend, tier=tier, plan=plan))
 
@@ -311,7 +365,9 @@ class Router:
                 return {"success": True, "data": {"web": rows}}
 
         try:
-            candidates = self.candidates("search", query)
+            # The full ladder, including candidates the breaker would hold back: the loop
+            # needs to see them to count them, so a fallback answer is labelled as one.
+            ordered = self.candidates("search", query, respect_store=False)
         except Exception as exc:  # noqa: BLE001 - routing never raises to the tool layer
             return {"success": False, "error": f"sluice: could not build the backend list ({exc})"}
 
@@ -320,32 +376,48 @@ class Router:
         started = self._clock()
         reasons: list[str] = []
         attempted = 0
+        skipped = 0
+        last_index = len(ordered) - 1
 
-        for candidate in candidates:
+        for index, candidate in enumerate(ordered):
             if self._store is not None:
                 blocked = self._store.circuit_reason(candidate.id)
                 if blocked:
                     reasons.append(f"{candidate.id}: {blocked}")
+                    skipped += 1
                     continue
             remaining = total - (self._clock() - started)
             if remaining <= 0:
                 reasons.append(f"{candidate.id}: total budget of {int(total * 1000)} ms exhausted")
                 break
             # A backend whose transport is inherently slower than the global window asks for
-            # its own (``spec.budget_ms``); that only ever widens this attempt, and the total
-            # budget below still bounds it.
-            window = max(per_backend, int(getattr(candidate.backend.spec, "budget_ms", 0) or 0) / 1000.0)
-            timeout = min(window, remaining)
+            # its own (``spec.budget_ms``); that only ever widens this attempt, and only up to
+            # what is left after reserving one default window for the candidates behind it.
+            timeout = attempt_window(
+                getattr(candidate.backend.spec, "budget_ms", 0),
+                per_backend,
+                remaining,
+                more_candidates=index < last_index,
+            )
             attempt_started = self._clock()
             result = self._call_search(candidate, query, safe_limit, freshness, timeout)
             elapsed_ms = round(max(0.0, self._clock() - attempt_started) * 1000, 1)
 
             if result.get("ok"):
+                fallback_used = attempted > 0 or skipped > 0
+                if fallback_used:
+                    logger.warning(
+                        "sluice: %s answered %r after %d candidate(s) could not: %s",
+                        candidate.id,
+                        query,
+                        attempted + skipped,
+                        "; ".join(reasons),
+                    )
                 rows = self._stamp_rows(
                     result.get("results") or [],
                     candidate,
                     cached=False,
-                    fallback_used=attempted > 0,
+                    fallback_used=fallback_used,
                     elapsed_ms=elapsed_ms,
                 )
                 if self._store is not None:
@@ -378,7 +450,12 @@ class Router:
                     kind="search",
                 )
 
-        reasons.extend(f"not routable — {reason}" for reason in self.skip_reasons("search"))
+        reported = {reason.partition(":")[0] for reason in reasons}
+        reasons.extend(
+            f"not routable — {reason}"
+            for reason in self.skip_reasons("search")
+            if reason.partition(":")[0] not in reported
+        )
         detail = "; ".join(reasons) if reasons else "no backend is configured or routable"
         return {
             "success": False,

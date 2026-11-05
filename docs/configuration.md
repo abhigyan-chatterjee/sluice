@@ -42,16 +42,18 @@ fatal:
 |---|---|---|---|
 | `tier_order` | str | `local,keyless,free,paid` | Tier order, cheapest first. Subset of `local`,`keyless`,`free`,`paid`; missing tiers are appended automatically. Read by `config.tier_order()` and used as the first sort key in `Router.candidates()`. |
 | `keyless_enabled` | bool | `true` | Allow anonymous public tiers: `ddgs`, and the keyless paths of Exa, Parallel, Firecrawl, Tavily and Keenable. With it off, a backend with no key is `unavailable` and the provider reports `is_keyless_available() == False`. |
-| `per_backend_budget_ms` | int | `2500` | Default per-attempt window for one backend in one search. A backend that declares `budget_ms` gets the wider of the two. The window is passed to the adapter as its request timeout, so it bounds the call instead of being measured afterwards. It also caps the `ddgs` child-process wall clock. |
-| `total_budget_ms` | int | `8000` | Wall-clock budget for one whole search. Checked before each candidate; the last attempt is capped by whatever remains. When it runs out the error names the backend that was skipped. |
+| `per_backend_budget_ms` | int | `2500` | Default per-attempt window for one backend in one search. A backend that declares `budget_ms` gets the wider of the two. The window is passed to the adapter as its request timeout, so it bounds the call instead of being measured afterwards. It also caps the `ddgs` child-process wall clock, and it is the floor reserved for the candidates behind a widened attempt. |
+| `total_budget_ms` | int | `8000` | Wall-clock budget for one whole search, shared by every attempt. Checked before each candidate. While a candidate is still behind the current one, one `per_backend_budget_ms` window is reserved out of what remains, so one slow backend cannot consume the whole ladder; the last attempt is capped by whatever remains. When it runs out the error names the backend that was skipped. |
 
 Routing is sequential. There is no parallel fan-out and no result fusion in 1.0.0.
 
 The global default is a 2500 ms window per attempt and an 8000 ms budget per search. A
 backend may declare a wider window of its own, and `ddgs` does: it runs a local multi-engine
 scrape rather than an API call, and measurements on one development machine put a real call
-at 1.9 s to 7.4 s, median 6.3 s. A declared window only widens that one attempt; the total
-budget still bounds every search.
+at 1.9 s to 7.4 s, median 6.3 s. A declared window only widens that one attempt, and the
+router keeps a default window in reserve for whatever is behind it: with the defaults `ddgs`
+gets 5500 ms and the next candidate still gets 2500 ms. Raise `total_budget_ms` to give
+`ddgs` its whole declared 8000 ms.
 
 ## Cache and circuit settings
 
