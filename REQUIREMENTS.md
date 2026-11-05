@@ -121,6 +121,13 @@ then least-recently-hit rows, down to a 150 MB low-water mark. That keeps the do
 numbers, not a claim about what the author meant; Abhi can override it and then both this
 section and the T2 tests change.
 
+**Second conflict, same table.** `DESIGN.md:204-205` says "three consecutive failures or
+one quota error opens it for 15 minutes, with exponential backoff capped at an hour", while
+`PLAN.md:20-21` gives a quota error 60 minutes. T2 implements the plan's numbers — 15
+minutes after three failures, 60 minutes after a quota error — because `PLAN.md` is the
+document that closed the gap. If Abhi wants the design's uniform 15 minutes instead, that
+is a two-constant change and the tests move with it.
+
 ### 2.3 Pane layout (`PLAN.md:25-33`)
 
 Right-side pane, 380 px (`PLAN.md:25`), containing:
