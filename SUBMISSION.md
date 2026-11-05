@@ -128,6 +128,8 @@ The following checklist explicitly enumerates items that require personal execut
   - Fork/clone the official Hermes plugins directory repository.
   - Paste the **Plugin Catalog PR Draft** content above.
   - Pin the exact 40-character commit SHA from `main`.
+  - Catalog entry file: `submission/plugin-catalog-sluice.yaml` (in this repo).
+  - Re-check the commit pin in that file against the tip of `main` at submit time.
 - [ ] **Submit Typeform**:
   - Fill out the hackathon submission form using the pre-filled factual parameters below.
 
