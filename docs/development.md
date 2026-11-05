@@ -1,14 +1,12 @@
 # Development
 
-This page covers the local loop: a clean environment, the test suite, the two local HTTP
-targets, the plugin validator, and a release. Every command here was run on 5 November 2026
-while writing these docs; the outputs shown are the ones observed, not idealized ones. The
-consolidated log is at the end.
+This page covers the local loop for working on Sluice: a clean environment, the test suite,
+the fixture server, a local SearXNG, the plugin validator, and a release.
 
 ## Requirements
 
-- Python 3.11 or newer (`pyproject.toml:10`; CI runs 3.11).
-- `uv` for the environment below (`pip` works too, but the commands here are `uv`).
+- Python 3.11 or newer (`pyproject.toml`; CI runs 3.11).
+- `uv` for the environment below. `pip` works too, but the commands here use `uv`.
 - Git, because two tests read tracked files (`git ls-files`, `git check-ignore`).
 - Optional: Playwright Chromium and a container runtime or Node.js for the browser rungs of
   the Fetch Ladder.
@@ -24,25 +22,15 @@ uv pip install -e ".[dev]"
 .venv/bin/pytest -q
 ```
 
-Observed in a fresh copy of the committed tree (`git archive`, so no `.git` directory):
-
-```
-Using CPython 3.14.7
-Creating virtual environment at: .venv
-Resolved 43 packages in 625ms
-Installed 43 packages in 224ms
-...
-377 passed, 12 skipped in 13.67s
-```
-
-Run the same three commands inside a git checkout and the count is `379 passed, 10 skipped`:
-`tests/test_surfaces.py` has two tests that skip when there is no `.git`, because they assert
-that the dashboard entry and API files are tracked and not gitignored. The ten skips in a
-checkout are the opt-in live vendor tests (below).
+In a fresh copy of the committed tree without a `.git` directory, the suite reports
+`413 passed, 12 skipped`. Inside a git checkout it reports `415 passed, 10 skipped` (both
+measured on 5 November 2026). `tests/test_surfaces.py` has two tests that skip when there is
+no `.git`, because they assert that the dashboard entry and API files are tracked and not
+gitignored. The ten skips in a checkout are the opt-in live vendor tests described below.
 
 The `dev` extra adds `pytest` and `fastapi`. `fastapi` is a Hermes dependency at runtime, not
 a package dependency, so installing it is what lets the route tests in
-`tests/test_plugin_api.py` run instead of skipping (`pyproject.toml:20-24`).
+`tests/test_plugin_api.py` run instead of skipping (`pyproject.toml`).
 
 ## The test suite
 
@@ -58,7 +46,7 @@ state. The default suite touches no network.
 | `tests/test_store.py` | circuit open/close, quota window, TTL expiry, LRU eviction to the low-water mark, domain memory TTL, job lifecycle |
 | `tests/test_router.py` | tier order, free before paid, fallback on failure, total-budget error, cache hit and stale-backend invalidation, per-URL extract isolation |
 | `tests/test_ladder.py` | all nine block classes against `tests/fixtures/blocks/`, stop rules, robots parsing, `Retry-After`, provenance line |
-| `tests/test_backends.py` | every adapter against recorded payloads, quota mapping, MCP parsing, the live tests behind the flag |
+| `tests/test_backends.py` | every adapter against recorded payloads, quota mapping, MCP parsing, the ddgs loader and budget regressions, the live tests behind the flag |
 | `tests/test_cli.py` | every command runs unattended and exits non-zero on failure |
 | `tests/test_manage.py` | detection with stubbed binaries, install plans, config route, job persistence |
 | `tests/test_plugin_api.py` | the six planned routes plus settings and setup, mounted on a FastAPI test client |
@@ -73,19 +61,9 @@ credentials:
 SLUICE_LIVE_TESTS=1 .venv/bin/pytest -q -k live
 ```
 
-Observed on 5 November 2026 with no API keys set (keyless tiers enabled, so five vendors were
-eligible). The run predates the F1-F4 regression tests, which is why it deselects 361 tests
-where the current suite deselects 379:
-
-```
-1 failed, 4 passed, 5 skipped, 361 deselected in 6.09s
-FAILED tests/test_backends.py::test_live_search_against_the_real_vendor[firecrawl]
-E   AssertionError: Firecrawl quota is exhausted; skipped for up to an hour
-```
-
-Four keyless vendors answered; Firecrawl's public endpoint reported its keyless quota
-exhausted; the five paid vendors skipped for want of credentials. The live run is not part
-of CI for exactly this reason: it tests the vendors' quotas as much as the code.
+Ten tests are selected, five paid vendors skip without credentials, and a keyless vendor can
+fail when its public quota is exhausted. That dependence on vendor state is why CI runs the
+hermetic suite only.
 
 ## The fixture server
 
@@ -145,9 +123,7 @@ off in the stock configuration, which is the only reason this file exists.
 podman-compose -f docker/searxng/docker-compose.yml up -d
 ```
 
-Observed: the image was pulled and `sluice-searxng` started. Any Compose v2 provider works;
-this machine has no Docker Compose plugin, so the run above used `podman-compose` (installed
-in a throwaway venv). Then check the JSON API and point Sluice at it:
+Any Compose v2 provider works. Then check the JSON API and point Sluice at it:
 
 ```sh
 curl -s "http://127.0.0.1:8080/search?q=sluice&format=json" | head -c 300
@@ -158,11 +134,11 @@ curl -s "http://127.0.0.1:8080/search?q=sluice&format=json" | head -c 300
 ```
 
 The JSON envelope is the point: the API is reachable and well-formed. The empty result list
-comes from the container's upstream engines timing out (`unresponsive_engines` names all
-five), not from the settings file.
+in that run came from the container's upstream engines timing out (`unresponsive_engines`
+names all five), not from the settings file.
 
 Both controls work: the `searxng_url` setting wins, and `SEARXNG_URL` is the fallback when
-the setting is empty (`sluice/config.py:154-159`):
+the setting is empty:
 
 ```sh
 SEARXNG_URL=http://127.0.0.1:8080 .venv/bin/sluice doctor
@@ -190,7 +166,7 @@ hermes plugins doctor /home/abhi/sluice --ci
 hermes plugins validate /home/abhi/sluice
 ```
 
-`doctor --ci` output (exit 0):
+`doctor --ci` exits 0 with this output:
 
 ```
 Plugin Doctor: /home/abhi/sluice
@@ -206,7 +182,7 @@ The warning is about the interpreter running `doctor`, not about the repository:
 checkout's dependencies live in `.venv`, while `hermes` runs on its own interpreter. Install
 the plugin's dependencies there (or run `doctor` with the venv's interpreter) to silence it.
 
-`validate` output (exit 0):
+`validate` exits 0 with sixteen checks:
 
 ```
 ✓ manifest — plugin.yaml parses
@@ -233,9 +209,9 @@ subcommands are wired into the local CLI parser)
 Validation passed.
 ```
 
-Sixteen checks pass and there is no advisory warning: Sluice imports only documented plugin
-surfaces (`hermes_cli.config`, `agent.web_search_provider`), and its settings route writes
-through `ctx.set_config()` instead of a private core module. `hermes plugins doctor` reports
+Sluice imports only documented plugin surfaces (`hermes_cli.config`,
+`agent.web_search_provider`), and its settings route writes through `ctx.set_config()`
+instead of a private core module. `hermes plugins doctor` reports
 `OK: runtime discovery, manifest parsing, import, and registration passed` for the same tree.
 
 ## Hermetic CLI runs
@@ -277,63 +253,19 @@ hermes sluice doctor
 ```
 
 `--no-deps` keeps the install unattended and leaves the plugin disabled; the explicit
-`enable` turns it on without a dependency prompt. Observed: the clone succeeded, `enable`
-reported `✓ Plugin sluice enabled.`, and `hermes sluice doctor` printed the same twelve-row
-table as the standalone run.
+`enable` turns it on without a dependency prompt. `hermes sluice doctor` then prints the
+same twelve-row table as the standalone run.
 
 ## Cutting a release
 
-1. Bump the version in four places, which the tests pin to the same value:
-   `plugin.yaml:2`, `pyproject.toml:7`, `__init__.py:17` and the front matter of
-   `skills/sluice/SKILL.md:5`.
-2. Update the three assertions that hardcode it: `tests/test_scaffold.py:300`,
-   `tests/test_scaffold.py:325` and `tests/test_surfaces.py:188`.
+1. Bump the version in four places, which the tests pin to the same value: `plugin.yaml`,
+   `pyproject.toml`, `__init__.py` and the front matter of `skills/sluice/SKILL.md`.
+2. Update the three assertions that hardcode it: two in `tests/test_scaffold.py` and one in
+   `tests/test_surfaces.py`.
 3. Run `.venv/bin/pytest -q` and the two validator commands above. All three must pass on
    the commit you are about to tag, not on the working tree.
 4. Commit, tag (`v<version>`), push the branch and the tag.
 5. Watch CI for the pushed commit. `.github/workflows/ci.yml` runs on every push and pull
    request: Python 3.11, `pip install -e ".[dev]"`, `pytest`.
 6. If the release changes what the README discloses (vendors, hosts, side effects), the
-   surface tests will fail first. That is the intended tripwire, not a nuisance.
-
-## Documentation verification log
-
-Every command used in `README.md` and this page, and what it returned on 5 November 2026.
-"Standalone" means the `sluice` console script from `.venv` with `HERMES_HOME` and
-`SLUICE_DATA_DIR` pointed at a temporary directory, no vendor keys.
-
-| Command | Observed |
-|---|---|
-| `uv venv` then `uv pip install -e ".[dev]"` | 43 packages installed into `.venv` |
-| `sluice --version` | `sluice 1.0.0` |
-| `sluice doctor` | twelve-row table, keyless row `ready`, seven keyed rows `missing`, browser engines block |
-| `sluice status` | twelve rows `idle`, `cache: 0 live / 0 rows`, `spend: $0.0000` |
-| `sluice setup` | three `hermes config set` lines, `dry run: re-run with --apply` |
-| `sluice use search` | `hermes config set web.search_backend sluice`, dry-run note |
-| `sluice cache clear` | `deleted 0 row(s)`; outer `cache/web` cleared |
-| `sluice install browserbase` | "there is nothing to install", next command `hermes config set browser.cloud_provider browserbase` |
-| `sluice install playwright` | job ran `python -m playwright install chromium`, `done. next: hermes sluice install camofox` (43 s) |
-| `sluice test --backend ddgs --limit 3 "duckdb vs sqlite benchmark"` | `ddgs (keyless, keyless) answered in 3333 ms with 3 result(s)` |
-| `hermes plugins install abhigyan-chatterjee/sluice --no-deps --enable` | clone succeeded, `Plugin installed but not enabled` (the README shows the same command without the flags, which adds the dependency consent prompt) |
-| `hermes plugins enable sluice` | `✓ Plugin sluice enabled.` |
-| `hermes plugins doctor sluice --ci` | `OK: runtime discovery, manifest parsing, import, and registration passed`, exit 0 |
-| `hermes sluice doctor` | same twelve-row table, from the installed plugin |
-| `hermes sluice setup` | three config route lines, dry run |
-| `hermes sluice setup --apply` | three `[ok]` lines, `✓ Set web.search_backend = sluice`, `web.extract_backend = sluice`, `web.cache_enabled = False`; `done: Hermes now routes ... outer cache off` |
-| `hermes sluice status` | twelve rows, `cache: 0 live / 0 rows`, spend line |
-| `hermes sluice cache clear` | `deleted 0 row(s)`, `hermes cache/web: nothing at <scratch>/cache/web` |
-| `hermes sluice test --backend exa --limit 2 "sqlite wal checkpoint"` | `exa (keyless, keyless) answered in 886 ms with 2 result(s)` |
-| `.venv/bin/pytest tests/test_backends.py -q -k ddgs` | `13 passed`; the loader test imports `ddgs.py` as `hermes_plugins.sluice.sluice.backends.ddgs` and completes one query in a real child process |
-| `hermes sluice install camofox` | not exercised: it starts a container and the first start downloads the Camoufox bundle. The plan behind it is covered by `tests/test_manage.py` |
-| `hermes plugins doctor /home/abhi/sluice --ci` | `OK: runtime discovery, manifest parsing, import, and registration passed`, exit 0 |
-| `hermes plugins validate /home/abhi/sluice` | `Validation passed.`, exit 0, one warning on the private settings import |
-| `hermes config set plugins.entries.sluice.settings.searxng_url ...` | `✓ Set ...`, `doctor` then shows `searxng local paid n/a ready` |
-| `podman-compose -f docker/searxng/docker-compose.yml up -d` | image pulled, `sluice-searxng` started |
-| `curl -s "http://127.0.0.1:8080/search?q=sluice&format=json"` | JSON envelope, five engines reported `timeout` |
-| `podman-compose -f docker/searxng/docker-compose.yml down` | container and network removed |
-| `.venv/bin/pytest -q` | `379 passed, 10 skipped` in a git checkout |
-| `SLUICE_LIVE_TESTS=1 .venv/bin/pytest -q -k live` | `1 failed, 4 passed, 5 skipped` (Firecrawl keyless quota) |
-| `python demo/fixture_server.py --port 8765` | nine fixture URLs printed |
-| `curl -i http://127.0.0.1:8765/cf` | `HTTP/1.1 403 Forbidden` plus `cf-mitigated: challenge` |
-| the README quick-start script (`provider.search` plus `provider.extract` on fixtures) | search answered by `exa/keyless`; `/ok` ok at `http`, `/js` ok at `chromium`, `/private` `policy_blocked` at `policy` |
-| GitHub Actions `ci` workflow | `test` job green on the pushed commit |
+   surface tests fail first. That is the intended tripwire, not a nuisance.

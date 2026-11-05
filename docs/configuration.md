@@ -1,41 +1,35 @@
 # Configuration
 
-Everything Sluice reads at runtime comes from one place: the plugin settings Hermes stores
-under `plugins.entries.sluice.settings`, plus the credential environment variables those
-settings name. This page lists every key, its type, its default and what it changes, in the
-order the code resolves it. Line references point at the implementation, not at the design
-documents.
-
-- Schema: `plugin.yaml` (`config_schema`, lines 17-58).
-- Runtime defaults: `sluice/config.py` (`DEFAULTS`, lines 45-64).
-- Resolution: `sluice/config.py:load_settings` (lines 120-157).
-- Cache and circuit policy: `sluice/store.py` (`StorePolicy`, lines 59-78).
-
+Sluice reads its configuration from one place: the plugin settings Hermes stores under
+`plugins.entries.sluice.settings`, plus the credential environment variables those settings
+name. This page lists every key, its type, its default and what it changes.
 `tests/test_config.py` asserts that every non-secret key in `plugin.yaml` has a matching
-entry in `DEFAULTS` with the same default, so the manifest and the runtime cannot drift.
+entry in `sluice/config.py:DEFAULTS` with the same default, so the manifest and the runtime
+cannot drift.
 
 ## Where settings live and how they resolve
 
 `load_settings()` builds the effective settings in this order:
 
-1. `DEFAULTS` from `sluice/config.py:45`.
-2. Overrides. With a plugin context, one `ctx.get_config(key, default)` call per key
-   (`sluice/config.py:131-140`). Without a context (the `sluice` console script, the
-   dashboard API, tests), the saved values under
-   `plugins.entries.sluice.settings` (`sluice/config.py:87-105`).
+1. `DEFAULTS` from `sluice/config.py`.
+2. Overrides. With a plugin context, one `ctx.get_config(key, default)` call per key.
+   Without a context (the `sluice` console script, the dashboard API, tests), the saved
+   values under `plugins.entries.sluice.settings`.
 3. Credentials: the ten `*_API_KEY` names through `get_provider_env()`, or `os.environ`
-   when Hermes is not importable (`sluice/config.py:108-117`).
+   when Hermes is not importable.
 4. `camofox_url` falls back to `CAMOFOX_URL`, then to `http://localhost:9377`.
-5. `tier_order` is normalized and `keyless_enabled` is coerced to a boolean.
+5. `searxng_url` falls back to `SEARXNG_URL`. The result is validated once; a rejected
+   address is dropped with its reason kept beside it as `searxng_url_error`.
+6. `tier_order` is normalized and `keyless_enabled` is coerced to a boolean.
 
 Two coercions are worth knowing because they make a malformed value harmless instead of
 fatal:
 
 - `tier_order` keeps only the four known tiers, in the order you wrote them, then appends
-  whatever is missing (`sluice/config.py:165-171`). `paid,free` becomes
-  `paid,free,local,keyless`. An unknown word is dropped, never an error.
+  whatever is missing. `paid,free` becomes `paid,free,local,keyless`. An unknown word is
+  dropped, never an error.
 - `keyless_enabled` accepts a boolean or the strings `1/true/yes/on` and `0/false/no/off`,
-  and anything else falls back to the default `true` (`sluice/config.py:174-183`).
+  and anything else falls back to the default `true`.
 
 ```sh
 .venv/bin/python -c "from sluice.config import tier_order; print(tier_order({'tier_order': 'paid,free'}))"
@@ -46,62 +40,56 @@ fatal:
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `tier_order` | str | `local,keyless,free,paid` | Tier order, cheapest first. Subset of `local`,`keyless`,`free`,`paid`; missing tiers are appended automatically. Read by `config.tier_order()` (`sluice/config.py:186`) and used as the first sort key in `Router.candidates()` (`sluice/router.py:226-238`). |
-| `keyless_enabled` | bool | `true` | Allow anonymous public tiers: `ddgs`, and the keyless paths of Exa, Parallel, Firecrawl, Tavily and Keenable. With it off, a backend with no key is `unavailable` (`sluice/backends/__init__.py:125-132`) and the provider reports `is_keyless_available() == False`. |
-| `per_backend_budget_ms` | int | `2500` | Wall-clock budget for one backend in one search. Passed to the adapter as its request timeout (`sluice/router.py:332`, `sluice/router.py:396-414`), so it bounds the call instead of being measured afterwards. It also shortens the ddgs child-process wall clock (`sluice/backends/ddgs.py:205-206`). |
-| `total_budget_ms` | int | `8000` | Wall-clock budget for one whole search. Checked before each candidate; the last attempt is capped by whatever remains (`sluice/router.py:328-332`). When it runs out the error names the backend that was skipped. |
+| `tier_order` | str | `local,keyless,free,paid` | Tier order, cheapest first. Subset of `local`,`keyless`,`free`,`paid`; missing tiers are appended automatically. Read by `config.tier_order()` and used as the first sort key in `Router.candidates()`. |
+| `keyless_enabled` | bool | `true` | Allow anonymous public tiers: `ddgs`, and the keyless paths of Exa, Parallel, Firecrawl, Tavily and Keenable. With it off, a backend with no key is `unavailable` and the provider reports `is_keyless_available() == False`. |
+| `per_backend_budget_ms` | int | `2500` | Default per-attempt window for one backend in one search. A backend that declares `budget_ms` gets the wider of the two. The window is passed to the adapter as its request timeout, so it bounds the call instead of being measured afterwards. It also caps the `ddgs` child-process wall clock. |
+| `total_budget_ms` | int | `8000` | Wall-clock budget for one whole search. Checked before each candidate; the last attempt is capped by whatever remains. When it runs out the error names the backend that was skipped. |
 
 Routing is sequential. There is no parallel fan-out and no result fusion in 1.0.0.
+
+The global default is a 2500 ms window per attempt and an 8000 ms budget per search. A
+backend may declare a wider window of its own, and `ddgs` does: it runs a local multi-engine
+scrape rather than an API call, and measurements on one development machine put a real call
+at 1.9 s to 7.4 s, median 6.3 s. A declared window only widens that one attempt; the total
+budget still bounds every search.
 
 ## Cache and circuit settings
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `search_ttl_general` | int (s) | `900` | TTL for cached searches whose query class is `general` or `docs` (namespace `search:general`). |
-| `search_ttl_news` | int (s) | `300` | TTL for queries classified `news` (namespace `search:news`). Classification is a word-list check in `sluice/router.py:119-126`; it never leaves the machine. |
+| `search_ttl_news` | int (s) | `300` | TTL for queries classified `news` (namespace `search:news`). Classification is a word-list check in `sluice/router.py`; it never leaves the machine. |
 | `extract_ttl` | int (s) | `3600` | TTL per cached URL and format (namespace `extract`). |
-| `negative_ttl` | int (s) | `60` | TTL for a failed URL (namespace `extract:negative`), so a dead link is not re-fetched on every call (`sluice/router.py:490-496`). |
-| `domain_memory_ttl` | int (s) | `86400` | How long `domain_memory` remembers the block class and the stage that worked for a domain (`sluice/store.py:721-741`). |
-| `circuit_failures` | int | `3` | Consecutive failures that open a backend circuit (`sluice/store.py:622`). |
+| `negative_ttl` | int (s) | `60` | TTL for a failed URL (namespace `extract:negative`), so a dead link is not re-fetched on every call. |
+| `domain_memory_ttl` | int (s) | `86400` | How long `domain_memory` remembers the block class and the stage that worked for a domain. |
+| `circuit_failures` | int | `3` | Consecutive failures that open a backend circuit. |
 | `circuit_open_seconds` | int (s) | `900` | Open duration after `circuit_failures` consecutive failures. |
-| `circuit_quota_seconds` | int (s) | `3600` | Open duration after one quota or credit error. A quota failure sets both `quota_exhausted_until` and `circuit_open_until` (`sluice/store.py:619-623`). |
-| `cache_max_mb` | int (MB) | `200` | Size cap for `sluice.db`. `cache_put()` calls `maybe_evict()` after every write (`sluice/store.py:304-325`). |
+| `circuit_quota_seconds` | int (s) | `3600` | Open duration after one quota or credit error. A quota failure sets both `quota_exhausted_until` and `circuit_open_until`. |
+| `cache_max_mb` | int (MB) | `200` | Size cap for `sluice.db`. `cache_put()` calls `maybe_evict()` after every write. |
 
-A success resets the failure count and both breakers (`sluice/store.py:590-595`). A circuit
-is per backend id, persisted, and survives a restart.
+A success resets the failure count and both breakers. A circuit is per backend id,
+persisted, and survives a restart.
 
-### The two reconciled thresholds
+### Cache eviction and circuit policy
 
-`PLAN.md` and `DESIGN.md` disagree on two numbers. These are the two pairs in `PLAN.md`'s
-"Closed gaps" item 2 (`PLAN.md:18-23`). Both are resolved in the code, and both resolutions
-are recorded in `REQUIREMENTS.md` §2.2.
+The store applies two policies that bound disk use and how long a dead backend stays out.
 
-**1. Cache eviction: 200 MB trigger, 150 MB low-water mark.** `PLAN.md:21-23` says "if the
-DB exceeds 150 MB, delete expired rows first, then least-recently-hit rows down to 200 MB".
-Deleting rows cannot shrink a database up to a larger number, so the two figures cannot both
-be literal. `DESIGN.md:205` and `DESIGN.md:329` both fix the cap at 200 MB. The
-implementation therefore triggers at `cache_max_mb` (default 200 MB), deletes expired cache
-and domain-memory rows first, then deletes least-recently-hit cache rows until the live
-payload falls to `cache_low_water_mb` (default 150 MB), then checkpoints the WAL
-(`sluice/store.py:403-466`). `VACUUM`, the only operation that returns pages to the
-filesystem, runs at most once per `vacuum_interval_seconds` (default 604800) and only when
-the file is still over the cap (`sluice/store.py:454-462`).
+**Cache eviction.** Trigger at `cache_max_mb` (default 200 MB), delete expired cache and
+domain-memory rows first, then delete least-recently-hit cache rows until the live payload
+falls to `cache_low_water_mb` (default 150 MB), then checkpoint the WAL. `VACUUM`, the only
+operation that returns pages to the filesystem, runs at most once per
+`vacuum_interval_seconds` (default 604800) and only when the file is still over the cap.
 
-**2. Circuit: 15 minutes after 3 failures, 60 minutes after 1 quota error.**
-`DESIGN.md:204-205` says "three consecutive failures or one quota error opens it for 15
-minutes, with exponential backoff capped at an hour". `PLAN.md:20-21` gives a quota error 60
-minutes. The implementation follows `PLAN.md`, the document that closed the gap:
-`circuit_open_seconds` (900) after `circuit_failures` (3) consecutive failures, and
-`circuit_quota_seconds` (3600) after one quota or credit error, with no exponential backoff
-(`sluice/store.py:599-631`). `REQUIREMENTS.md` §2.2 notes that switching to the design's
-uniform 15 minutes is a two-constant change.
+**Circuit.** `circuit_open_seconds` (900) after `circuit_failures` (3) consecutive
+failures, and `circuit_quota_seconds` (3600) after one quota or credit error, with no
+exponential backoff. A success resets both.
 
 ## Local backend settings
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `searxng_url` | str | `""` | Base URL of a running SearXNG whose `settings.yml` has `search.formats: [html, json]`. When empty, `SEARXNG_URL` is read; when both are empty the SearXNG backend is skipped entirely (`sluice/config.py:45-79`, `sluice/config.py:200-201`, `sluice/backends/__init__.py:120-128`). |
-| `camofox_url` | str | `http://localhost:9377` | Not in `plugin.yaml`. Address of the Camofox REST server used by the third ladder rung. Falls back to `CAMOFOX_URL`, then the default (`sluice/config.py:104`, `sluice/config.py:193-194`). |
+| `searxng_url` | str | `""` | Base URL of a running SearXNG whose `settings.yml` has `search.formats: [html, json]`. When empty, `SEARXNG_URL` is read; when both are empty the SearXNG backend is skipped entirely. |
+| `camofox_url` | str | `http://localhost:9377` | Not in `plugin.yaml`. Address of the Camofox REST server used by the third ladder rung. Falls back to `CAMOFOX_URL`, then the default. |
 
 SearXNG can be configured either way. The `searxng_url` plugin setting wins when both are
 set; `SEARXNG_URL` is the fallback, the same shape as `CAMOFOX_URL`. The CLI hint and
@@ -139,9 +127,8 @@ SEARXNG_URL=localhost:8080 .venv/bin/sluice doctor
 ## Per-backend plan settings
 
 One key per keyed vendor: `plan_<vendor>`. Values are `free` or `paid`; anything else falls
-back to the vendor's default (`sluice/config.py:190-192`). The plan only changes routing
-order inside the keyed tiers. It never labels a keyless call as paid, and it never promotes
-a paid backend above a free one (`sluice/backends/__init__.py:134-152`).
+back to the vendor's default. The plan only changes routing order inside the keyed tiers. It
+never labels a keyless call as paid, and it never promotes a paid backend above a free one.
 
 | Key | Default | Key | Default |
 |---|---|---|---|
@@ -151,12 +138,12 @@ a paid backend above a free one (`sluice/backends/__init__.py:134-152`).
 | `plan_tavily` | `free` | `plan_tinyfish` | `paid` |
 | `plan_keenable` | `paid` | `plan_xai` | `paid` |
 
-Vendors with a published free allowance default to `free` (`sluice/config.py:23`,
-`FREE_PLAN_VENDORS`). Everything else defaults to `paid`. `searxng` and `ddgs` have no plan
+Vendors with a published free allowance default to `free` (`FREE_PLAN_VENDORS` in
+`sluice/config.py`). Everything else defaults to `paid`. `searxng` and `ddgs` have no plan
 key because neither takes a credential.
 
 The plan is only consulted when a key is present. A vendor with no key runs its keyless
-path and is labelled `keyless` whatever its plan says (`sluice/backends/__init__.py:134-152`).
+path and is labelled `keyless` whatever its plan says.
 
 ## Credential settings
 
@@ -172,14 +159,14 @@ same names are read from `os.environ`.
 | `FIRECRAWL_API_KEY` | Firecrawl | yes, public endpoint |
 | `TAVILY_API_KEY` | Tavily | yes, public endpoint |
 | `KEENABLE_API_KEY` | Keenable | yes, public endpoint |
-| `BRAVE_API_KEY` | Brave Search | no; Brave needs a key. `BRAVE_SEARCH_API_KEY` is a different key and is not accepted (`sluice/backends/brave.py:44-72`) |
+| `BRAVE_API_KEY` | Brave Search | no; Brave needs a key. `BRAVE_SEARCH_API_KEY` is a different key and is not accepted |
 | `PERPLEXITY_API_KEY` | Perplexity | no |
 | `XAI_API_KEY` | xAI | no |
 | `DEEPSEEK_API_KEY` | DeepSeek | no |
 | `TINYFISH_API_KEY` | TinyFish | no |
 
-`BROWSERBASE_API_KEY` is read for detection only (`sluice/manage.py:205`); it is not a
-Sluice backend and does not appear in the manifest.
+`BROWSERBASE_API_KEY` is read for detection only (`sluice/manage.py`); it is not a Sluice
+backend and does not appear in the manifest.
 
 ## Settings the code reads but the manifest does not declare
 
@@ -187,41 +174,41 @@ These are honoured when present under `plugins.entries.sluice.settings`, but the
 field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_KEYS` and
 `plan_*` are writable there), so a config-file edit is the route.
 
-| Key | Default | Read at |
+| Key | Default | Where it is read |
 |---|---|---|
-| `cache_low_water_mb` | `150` | `sluice/store.py:75`, via `StorePolicy.from_settings` |
-| `vacuum_interval_seconds` | `604800` | `sluice/store.py:77` |
-| `FIRECRAWL_API_URL` | `https://api.firecrawl.dev` | `sluice/backends/firecrawl.py:40-51` |
-| `TAVILY_BASE_URL` | `https://api.tavily.com` | `sluice/backends/tavily.py:39-51` |
-| `KEENABLE_API_URL` | `https://api.keenable.ai` | `sluice/backends/keenable.py:36-48` |
-| `PERPLEXITY_BASE_URL` | `https://api.perplexity.ai` | `sluice/backends/perplexity.py:42-70` |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | `sluice/backends/deepseek.py:46-59` |
-| `XAI_BASE_URL` | `https://api.x.ai/v1` | `sluice/backends/xai.py:42-67` |
+| `cache_low_water_mb` | `150` | `sluice/store.py`, through `StorePolicy.from_settings` |
+| `vacuum_interval_seconds` | `604800` | `sluice/store.py` |
+| `FIRECRAWL_API_URL` | `https://api.firecrawl.dev` | `sluice/backends/firecrawl.py` |
+| `TAVILY_BASE_URL` | `https://api.tavily.com` | `sluice/backends/tavily.py` |
+| `KEENABLE_API_URL` | `https://api.keenable.ai` | `sluice/backends/keenable.py` |
+| `PERPLEXITY_BASE_URL` | `https://api.perplexity.ai` | `sluice/backends/perplexity.py` |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | `sluice/backends/deepseek.py` |
+| `XAI_BASE_URL` | `https://api.x.ai/v1` | `sluice/backends/xai.py` |
 
 ## Environment variables
 
 | Variable | Read by | Effect |
 |---|---|---|
-| `EXA_API_KEY`, `PARALLEL_API_KEY`, `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `KEENABLE_API_KEY`, `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`, `TINYFISH_API_KEY` | `sluice/config.py:108-117`, `sluice/provider.py:81-96` | Credentials when Hermes is not importable, and the fallback path in a Hermes session. |
-| `CAMOFOX_URL` | `sluice/config.py:152-153` | Camofox server address when `camofox_url` is empty. |
-| `BROWSERBASE_API_KEY` | `sluice/manage.py:205` | Presence only, for the doctor and pane "Browserbase" row. |
-| `SLUICE_DATA_DIR` | `sluice/store.py:842-845` | Data directory override when Hermes' `plugin_data_dir()` is not importable (standalone installs and tests). Ignored when Hermes is present. |
-| `HERMES_HOME` | `sluice/manage.py:92-95` | Hermes home used to find `cache/web`, `plugin-data/sluice/camofox` and installed plugins. |
-| `PLAYWRIGHT_BROWSERS_PATH` | `sluice/manage.py:121-123` | Where detection looks for the Playwright Chromium build. |
-| `SLUICE_CAMOFOX_DIR` | `sluice/manage.py:381-385` | Install directory for the npm fallback of the Camofox server. |
-| `SLUICE_LIVE_TESTS` | `tests/test_backends.py:949-962` | Test switch only, never read by the plugin at runtime. `1` opts into the live vendor calls. |
-| `SEARXNG_URL` | `sluice/config.py:200-201` | SearXNG base URL when the `searxng_url` setting is empty. An explicit setting always wins. Validated like the setting: a full http(s) URL, trailing slashes stripped, and a malformed value dropped with its reason. |
+| `EXA_API_KEY`, `PARALLEL_API_KEY`, `FIRECRAWL_API_KEY`, `TAVILY_API_KEY`, `KEENABLE_API_KEY`, `BRAVE_API_KEY`, `PERPLEXITY_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY`, `TINYFISH_API_KEY` | `sluice/config.py`, `sluice/provider.py` | Credentials when Hermes is not importable, and the fallback path in a Hermes session. |
+| `CAMOFOX_URL` | `sluice/config.py` | Camofox server address when `camofox_url` is empty. |
+| `BROWSERBASE_API_KEY` | `sluice/manage.py` | Presence only, for the doctor and pane "Browserbase" row. |
+| `SLUICE_DATA_DIR` | `sluice/store.py` | Data directory override when Hermes' `plugin_data_dir()` is not importable (standalone installs and tests). Ignored when Hermes is present. |
+| `HERMES_HOME` | `sluice/manage.py` | Hermes home used to find `cache/web`, `plugin-data/sluice/camofox` and installed plugins. |
+| `PLAYWRIGHT_BROWSERS_PATH` | `sluice/manage.py` | Where detection looks for the Playwright Chromium build. |
+| `SLUICE_CAMOFOX_DIR` | `sluice/manage.py` | Install directory for the npm fallback of the Camofox server. |
+| `SLUICE_LIVE_TESTS` | `tests/test_backends.py` | Test switch only, never read by the plugin at runtime. `1` opts into the live vendor calls. |
+| `SEARXNG_URL` | `sluice/config.py` | SearXNG base URL when the `searxng_url` setting is empty. An explicit setting always wins. Validated like the setting: a full http(s) URL, trailing slashes stripped, and a malformed value dropped with its reason. |
 
 ## Hermes-level keys Sluice depends on
 
 These are Hermes keys, not plugin settings. Sluice never writes them; `hermes sluice setup`
-prints the commands and runs them only with `--apply` (`sluice/manage.py:37-41`).
+prints the commands and runs them only with `--apply` (`sluice/manage.py`).
 
 | Key | Value Sluice sets | Why |
 |---|---|---|
 | `web.search_backend` | `sluice` | Makes the native `web_search` tool use the Sluice provider. Until this is set, installing the plugin changes nothing. |
 | `web.extract_backend` | `sluice` | Same for `web_extract`. |
-| `web.cache_enabled` | `false` | Turns off Hermes' outer `cache/web` layer so exactly one tier-aware cache and one TTL govern. `hermes sluice cache clear` clears both layers anyway (`sluice/cli.py:297-311`). |
+| `web.cache_enabled` | `false` | Turns off Hermes' outer `cache/web` layer so exactly one tier-aware cache and one TTL govern. `hermes sluice cache clear` clears both layers anyway. |
 
 Two wrapper keys shape what the model sees but belong to Hermes, not Sluice:
 `web.extract_char_limit` (applied by the wrapper to the returned extract text) and
@@ -234,15 +221,15 @@ Three routes, all writing the same `plugins.entries.sluice.settings` map:
 
 1. Settings ▸ Plugins in Hermes, which renders `plugin.yaml`'s `config_schema`.
 2. The Desktop pane's settings page, which posts to `/api/plugins/sluice/settings`. The route
-   writes each key through `PluginContext.set_config()` — the documented plugin API — which
-   is the same writer Settings ▸ Plugins uses, so the CLI, the pane and the plugin cannot
-   disagree on where a setting lives (`sluice/api.py:403-472`, `sluice/hostctx.py`). It
-   refuses unknown keys, every secret, and a value whose type does not match the manifest:
+   writes each key through `PluginContext.set_config()`, the documented plugin API, which is
+   the same writer Settings ▸ Plugins uses, so the CLI, the pane and the plugin cannot
+   disagree on where a setting lives. It refuses unknown keys, every secret, and a value
+   whose type does not match the manifest:
    `{"ok": false, "error": "'cache_max_mb' should be int (got str)"}`.
 3. `hermes config set plugins.entries.sluice.settings.<key> <value>`.
 
-`POST /settings` accepts only `EDITABLE_KEYS` plus `plan_<vendor>`
-(`sluice/api.py:40-55`). The observed validation results:
+`POST /settings` accepts only `EDITABLE_KEYS` plus `plan_<vendor>` (`sluice/api.py`). The
+observed validation results:
 
 ```python
 from sluice.api import save_settings_payload
@@ -256,30 +243,32 @@ save_settings_payload({"cache_max_mb": "300"}, writer=lambda v: sorted(v))
 # observed: {'ok': False, 'error': "'cache_max_mb' should be int (got str)"}
 ```
 
-The pane route only writes inside a Hermes process that has loaded the plugin, because that is
-where the context comes from. Without one it says so instead of failing later:
+The pane route only writes inside a Hermes process that has loaded the plugin, because that
+is where the context comes from. Without one it says so instead of failing later:
 `{"ok": false, "error": "no Hermes plugin context in this process: enable Sluice with
 'hermes plugins' and restart Hermes, then save from Settings ▸ Plugins"}`.
 
 A `hermes sluice` subcommand reads the settings fresh on every invocation, so a change is
 visible there at once. Inside a long-lived Hermes process the provider builds its settings
-and router once (`sluice/provider.py:127-133`, `sluice/provider.py:170-197`), so a change
-applies after that provider is rebuilt, which in practice means a Hermes or gateway restart.
+and router once, so a change applies after that provider is rebuilt, which in practice means
+a Hermes or gateway restart.
 
 ## Directory-plugin loading
 
 Hermes imports this repository as the directory plugin `hermes_plugins.sluice`. That
 namespace exists only in the parent process, so the `ddgs` query runs in a `subprocess`
-`-c` script that takes one JSON request on stdin and prints one JSON object — a
-`multiprocessing` spawn would try to import `hermes_plugins` in the child and fail
-(`sluice/backends/ddgs.py:53-107`, `:110-166`). The script puts the repository root first on
-`PYTHONPATH`, so it imports `search_row` from the same copy of Sluice that started it.
+`-c` script that takes one JSON request on stdin and prints one JSON object. A
+`multiprocessing` spawn would try to import `hermes_plugins` in the child and fail. The
+script puts the repository root first on `PYTHONPATH`, so it imports `search_row` from the
+same copy of Sluice that started it.
 
 `SEARXNG_URL` and the `searxng_url` setting are both read; the plugin setting wins when both
-are set (`sluice/config.py:200-201`).
+are set (`sluice/config.py`).
 
 Regression coverage:
 `tests/test_backends.py::test_ddgs_search_works_under_the_hermes_plugins_loader`,
-`tests/test_config.py::test_searxng_url_env_configures_searxng_when_the_setting_is_unset`, and
-`tests/test_public_surface.py` (no private Hermes import; settings write through
+`tests/test_backends.py::test_ddgs_router_search_works_under_the_hermes_plugins_loader`,
+`tests/test_backends.py::test_ddgs_failure_is_not_silent_and_surfaces_in_store_and_desktop_status`,
+`tests/test_config.py::test_searxng_url_env_configures_searxng_when_the_setting_is_unset`,
+and `tests/test_public_surface.py` (no private Hermes import; settings write through
 `ctx.set_config`).

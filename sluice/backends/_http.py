@@ -539,8 +539,11 @@ def query_within_chars(query: str, max_chars: int) -> tuple[str, bool]:
 def call_timeout(kwargs: Mapping[str, Any] | None, default: float) -> float:
     """Per-call timeout from the router's budget, clamped to the vendor default.
 
-    The router's per-backend budget (2.5 s) is shorter than any vendor default, so this only
-    ever shortens a request. A budget never makes a vendor call slower than its own limit.
+    The router's per-attempt window is shorter than every vendor default in this repository,
+    so this only ever shortens a request. A backend whose transport is slower than the
+    global default can widen its own window (``BackendSpec.budget_ms``), and the clamp still
+    keeps the call at or below the vendor's own limit. A budget never makes a vendor call
+    slower than its own limit.
     """
     raw = (kwargs or {}).get("timeout")
     try:

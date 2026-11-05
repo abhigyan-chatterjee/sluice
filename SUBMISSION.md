@@ -17,9 +17,9 @@ Sluice is a production-grade, tiered, free-first web search and extraction engin
 
 ### Closed Capability Gaps
 1. **Vendor Payloads & Normalization (`references/endpoints.md`, `sluice/backends/_http.py`)**:
-   Standardized search and extraction schemas across all 12 engines (DuckDuckGo, Exa, Parallel, Firecrawl, Tavily, Keenable, SearXNG, Brave, Perplexity, DeepSeek, TinyFish, xAI). Enforces strict error mapping (HTTP 402 and credit errors immediately trip `out_of_credit=True`, 429 performs a single `Retry-After` bounded backoff, 2.5s per-backend budget).
+   Standardized search and extraction schemas across all 12 engines (DuckDuckGo, Exa, Parallel, Firecrawl, Tavily, Keenable, SearXNG, Brave, Perplexity, DeepSeek, TinyFish, xAI). Enforces strict error mapping (HTTP 402 and credit errors immediately trip `out_of_credit=True`, 429 performs a single `Retry-After` bounded backoff).
 2. **Unified SQLite Store (`sluice/store.py`)**:
-   Replaces fragmented outer caches with a single WAL-mode SQLite database (`store.db`) governed by `StorePolicy`. Features query-normalized caching (900s general / 300s news TTL), content extract caching (3600s TTL), negative URL failure caching (60s TTL), per-domain bot mitigation memory (24h TTL), per-backend circuit breakers (3 failures trip a 15-minute open circuit; quota exhaustion trips a 60-minute open circuit), hysteresis LRU eviction (triggers at 200 MB down to 150 MB low-water mark), and weekly VACUUM scheduling.
+   Replaces fragmented outer caches with a single WAL-mode SQLite database (`sluice.db`) governed by `StorePolicy`. Features query-normalized caching (900s general / 300s news TTL), content extract caching (3600s TTL), negative URL failure caching (60s TTL), per-domain bot mitigation memory (24h TTL), per-backend circuit breakers (3 failures trip a 15-minute open circuit; quota exhaustion trips a 60-minute open circuit), hysteresis LRU eviction (triggers at 200 MB down to 150 MB low-water mark), and weekly VACUUM scheduling.
 3. **Desktop Management Panel (`desktop/plugin.js`)**:
    Provides a 380px right-side pane (`PANES_AREA`), settings page (`registerSettingsPage`), and command palette entries (`PALETTE_AREA`) built strictly with Hermes Plugin SDK and theme tokens. Displays live health, latency EMA, call counts, and spend for all 12 backends; supports manual probe/test execution, cache wiping, and tier plan toggling without manual configuration editing.
 4. **Deterministic Demo Fixture Server (`demo/fixture_server.py`)**:
@@ -27,12 +27,12 @@ Sluice is a production-grade, tiered, free-first web search and extraction engin
 
 ### Tiered Routing & Fetch Ladder
 - **Tier Architecture (`sluice/router.py`)**:
-  Routes requests through `local` (SearXNG) → `keyless` (DuckDuckGo, Exa MCP, Parallel MCP, Firecrawl, Tavily, Keenable) → `free` (free commercial allowances) → `paid` (Brave, Perplexity, DeepSeek, TinyFish, xAI). Backends within the same tier are sorted dynamically by latency EMA. Any engine with an open circuit, exhausted quota, or missing credentials is bypassed instantly. An 8.0s overall wall-clock budget ensures bounded response times.
+  Routes requests through `local` (SearXNG) → `keyless` (DuckDuckGo, Exa MCP, Parallel MCP, Firecrawl, Tavily, Keenable) → `free` (free-plan keys for Exa, Firecrawl, Tavily and Brave) → `paid` (Parallel, Keenable, Perplexity, DeepSeek, TinyFish and xAI, plus any free-plan vendor switched to `paid`). Backends within the same tier are sorted dynamically by latency EMA. Any engine with an open circuit, exhausted quota, or missing credentials is skipped. A 2500 ms default window per backend attempt and an 8000 ms total budget bound each search; a backend that declares `budget_ms` gets the wider per-attempt window, still capped by the total.
 - **Local Anti-Bot Extraction Ladder (`sluice/ladder.py`)**:
-  Implements a 9-class bot mitigation classifier (Cloudflare Turnstile/Challenge, Imperva, PerimeterX/HUMAN, Kasada, Akamai, Datadome, AWS WAF, Captcha, JS-required). Escalates extraction across 5 stages: Stage 1 (HTTPX + Trafilatura) → Stage 2 (Playwright headless Chromium with automation evasion) → Stage 3 (Camofox containerized browser) → Stop on authentication/policy boundaries. Verifies `robots.txt` and `X-Robots-Tag` locally prior to making network requests.
+  Implements a nine-class block classifier: `ok`, `js_required`, `rate_limited`, `challenge`, `forbidden`, `auth_required`, `payment_required`, `policy_blocked` and `error`. Vendor markers (Cloudflare, Imperva, PerimeterX/HUMAN, Kasada, Akamai, DataDome, AWS WAF, Fastly) feed the `challenge` class. Escalates extraction across three stages: HTTP (httpx + trafilatura) → real Chromium through Playwright → the Camofox REST server, stopping at authentication and policy boundaries. Checks `robots.txt` before the first request and `X-Robots-Tag`/`Content-Signal` on every response.
 
 ### Hermetic Test Story
-- **Test Results**: 379 passed, 10 skipped (opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`), 0 failed across 10 test modules.
+- **Test Results**: 415 passed, 10 skipped (opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`), 0 failed across 11 test modules.
 - **Hermetic Isolation**: Tests run against a synthetic temporary `HERMES_HOME` with zero writes to host configuration or live agent state.
 - **Validation**:
   - `hermes plugins doctor --ci`: Passed (exit code 0).
@@ -98,7 +98,7 @@ hermes config set web.extract_backend sluice
 ```
 
 ### Verification
-- 379 unit and integration tests passing in hermetic environment.
+- 415 unit and integration tests passing, 10 skipped in a hermetic environment.
 - `hermes plugins doctor --ci` and `hermes plugins validate` pass with 0 errors.
 ```
 
@@ -146,8 +146,8 @@ The following checklist explicitly enumerates items that require personal execut
 | **Contact Email** | `officialpxrpose@gmail.com` / `abhi@nullbit.in` | Verified profile contact |
 | **Hermes Compatibility** | `>=0.22.5` | `plugin.yaml:8` |
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
-| **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), 5-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
-| **Test Verification** | 379 tests passed, 10 skipped (live opt-in), 0 failed; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
+| **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
+| **Test Verification** | 415 tests passed, 10 skipped (live opt-in), 0 failed; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
 | **Demo Video URL** | *(Requires Abhi)* | Paste URL after recording |
 | **Catalog PR URL** | *(Requires Abhi)* | Paste URL after opening PR |
 | **Confirmation Signature** | *(Requires Abhi)* | Abhigyan Chatterjee |

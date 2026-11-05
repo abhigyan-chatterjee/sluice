@@ -8,8 +8,10 @@ Contract: PLAN.md:64-72.
 * Candidates inside a tier sort by latency EMA. A light query classifier biases that order
   (news versus docs) and can never move a paid backend above a free one: the tier index is
   the first sort key.
-* Each search gets a 2.5 s per-backend budget and an 8 s total budget, run sequentially.
-  The budget is passed to the adapter as its request timeout, so it is enforced rather than
+* Each search gets a 2.5 s per-attempt budget and an 8 s total budget, run sequentially. A
+  backend may declare a wider per-attempt window through ``BackendSpec.budget_ms`` (``ddgs``
+  does, for its local multi-engine scrape); the total budget still bounds every attempt. The
+  window is passed to the adapter as its request timeout, so it is enforced rather than
   measured after the fact.
 * Every search row and extract item carries ``backend``, ``tier``, ``cached``,
   ``fallback_used`` and ``elapsed_ms``.

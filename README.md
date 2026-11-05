@@ -1,14 +1,19 @@
 # Sluice
 
-Sluice is one Hermes plugin that owns the web layer. It serves the native `web_search` and
-`web_extract` tools through a single routing provider over twelve backends, and it manages
-every engine it can use: a local SearXNG, keyless public endpoints, free-plan keys and paid
-keys.
+Sluice is the web layer for Hermes. One plugin serves both native web tools,
+`web_search` and `web_extract`, through a single routing provider over twelve backends, and
+manages every engine it can use: a local SearXNG, keyless public endpoints, free-plan keys
+and paid keys. Configure it once and every Hermes surface, including cron sessions, gateway
+sessions, subagents and the Desktop app, routes the same way without learning a new tool
+name.
 
-Routing is free-first: local, then keyless, then free-plan keys, then paid. Paid is last by
-default, never exclusive. Extraction is local only: honest `httpx` plus trafilatura, then
-real Chromium through Playwright, then the Camofox REST server, with a deterministic block
-classifier deciding when to climb and when to stop.
+- **Free first.** Routing order is local, keyless, free-plan keys, then paid. Paid is last
+  by default and never exclusive.
+- **Visible state.** Per-backend health, latency, quota and circuit state survive restarts.
+  Every result row names the backend and tier that answered it.
+- **Local extraction.** `httpx` plus trafilatura first, real Chromium through Playwright
+  second, the Camofox REST server third, with a deterministic block classifier deciding
+  when to climb and when to stop.
 
 ```
 web_search ──┐
@@ -19,17 +24,13 @@ web_extract ─┘                              │
 
 Requirements: Hermes 0.22.5 or newer (`plugin.yaml`), Python 3.11 or newer.
 
-## Why it exists
+## Why Sluice
 
 Hermes ships a provider registry and a config key you edit by hand, but no surface to
-install, test, monitor or switch backends. `web-search-plus` adds a second tool surface
-instead of serving the native one, and does not treat free tiers as first-class. The result
-is overlapping plugins, no shared health state, and a fallback chain nobody can see.
-
-Sluice serves the native tools, so cron sessions, gateway sessions and subagents route
-identically without learning a new tool name. It keeps per-backend health, latency, quota and
-circuit state across restarts, caches searches and extracts, and names the backend that
-answered on every row.
+install, test, monitor or switch backends. Sluice provides that surface, and it serves the
+native tools rather than adding a second search API to learn. It keeps per-backend health,
+latency, quota and circuit state across restarts, caches searches and extracts, and names
+the backend that answered on every row.
 
 ## Install
 
@@ -140,7 +141,7 @@ Chromium rung uses a `google-chrome`, `google-chrome-stable`, `chromium`,
 `/js` line prints `js: js_required via http` and the other two lines are unchanged. The
 output below was reproduced with the normal locale, `LANG=C.UTF-8` and `env -i`.
 
-Observed output on 5 November 2026:
+Output from a run on 5 November 2026:
 
 ```
 search success: True
@@ -156,7 +157,7 @@ search success: True
            [sluice: stage=policy status=policy_blocked]
 ```
 
-The three extract lines are the ladder doing its job on the fixture pages: `/ok` is read at
+The three extract lines show the ladder at work on the fixture pages: `/ok` is read at
 the HTTP rung, the JavaScript shell `/js` is read at the Chromium rung, and `/private` never
 gets a request because `robots.txt` disallows it. Which keyless backend answers a search
 varies with load and latency; every row names it. `ddgs` runs its query in a separate
@@ -217,6 +218,12 @@ Search-only backends raise `NotImplementedError` from `extract`, and the router 
 them for extraction: `web_extract` is served by the local Fetch Ladder. Per-vendor plans
 (`plan_exa`, `plan_brave`, ...) only change routing order inside the keyed tiers. A free key
 is never labelled paid, and a paid backend never jumps a free one.
+
+Each search attempt gets a 2500 ms window by default. A backend may declare a wider window
+of its own, and `ddgs` does: it is a local multi-engine scrape rather than an API call, and
+measurements on one development machine put a real `ddgs` call at 1.9 s to 7.4 s, median
+6.3 s. The wider window only ever widens that attempt; the 8000 ms total budget still
+bounds every search.
 
 ## Network and process disclosures
 
@@ -285,18 +292,18 @@ polls `/status` every 5 s while visible and holds no secret.
 ## Documentation
 
 - [`docs/configuration.md`](docs/configuration.md): every setting, environment variable,
-  default and effect, plus the two reconciled `PLAN.md` vs `DESIGN.md` thresholds.
+  default and effect.
 - [`docs/architecture.md`](docs/architecture.md): module map, the search and extract data
   paths, the Hermes seams, and the extension points.
 - [`docs/development.md`](docs/development.md): dev environment, tests, the fixture server,
   local SearXNG, validation, release.
-- `PLAN.md`, `DESIGN.md`, `REQUIREMENTS.md`: the build plan, the locked design and the
-  traceable requirements.
+- `DESIGN.md` and `REQUIREMENTS.md`: the design and the requirements behind the
+  implementation.
 - `references/endpoints.md`: request and response shapes for all twelve vendors.
 
-## Not yet implemented
+## Scope for 1.0
 
-Out of scope for v1, from `DESIGN.md:312-319`:
+Not in this release:
 
 - Parallel or racing fan-out and result fusion. Routing is sequential.
 - Per-domain routing rules set by the user. Domain memory is automatic.
@@ -309,17 +316,12 @@ Out of scope for v1, from `DESIGN.md:312-319`:
 - CAPTCHA solving, paywall or login circumvention.
 - Per-call backend pinning in `web_search(query, limit)` or `web_extract(urls, char_limit)`.
 
-Also not shipped:
-
-- `SUBMISSION.md` and the 90-second demo recording (`PLAN.md` T14). They are external
-  submission artifacts, not runtime code.
-
 ## Development
 
 ```sh
 uv venv
 uv pip install -e ".[dev]"
-.venv/bin/pytest -q           # 379 passed, 10 skipped in a git checkout
+.venv/bin/pytest -q           # 415 passed, 10 skipped in a git checkout
 ```
 
 Live vendor calls are opt-in with `SLUICE_LIVE_TESTS=1`. The fixture server for the demo is
