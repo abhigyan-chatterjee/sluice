@@ -121,7 +121,8 @@ off in the stock configuration, which is the only reason this file exists.
 podman-compose -f docker/searxng/docker-compose.yml up -d
 ```
 
-Any Compose v2 provider works. Then check the JSON API and point Sluice at it:
+The reference run used `podman-compose`; any Compose v2 provider works. Then check the JSON
+API and point Sluice at it:
 
 ```sh
 curl -s "http://127.0.0.1:8080/search?q=sluice&format=json" | head -c 300
