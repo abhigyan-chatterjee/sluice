@@ -110,8 +110,8 @@ code in 1.0.0 (see "Known gaps" below).
 hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8080
 hermes config get plugins.entries.sluice.settings.searxng_url
 # observed: http://127.0.0.1:8080
-hermes sluice doctor | sed -n '5,6p'
-# observed:
+hermes sluice doctor
+# observed (excerpt from the twelve-row table):
 # searxng      local    paid  n/a      ready
 # ddgs         keyless  paid  keyless  ready
 ```
@@ -163,11 +163,9 @@ Sluice backend and does not appear in the manifest.
 
 ## Settings the code reads but the manifest does not declare
 
-These are honoured when present under `plugins.entries.sluice.settings` (or via the
-environment where noted), but they have no field in Settings ▸ Plugins, so they are for a
-config-file edit or the dashboard `POST /settings` route only. `POST /settings` refuses any
-key outside `EDITABLE_KEYS` plus `plan_*`, and these are outside it, so a config-file edit
-is the practical route.
+These are honoured when present under `plugins.entries.sluice.settings`, but they have no
+field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_KEYS` and
+`plan_*` are writable there), so a config-file edit is the route.
 
 | Key | Default | Read at |
 |---|---|---|
