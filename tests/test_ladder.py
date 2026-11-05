@@ -494,7 +494,11 @@ class _FakeContext:
 
 
 class _FakeBrowser:
+    def __init__(self) -> None:
+        self.contexts: list[dict] = []
+
     def new_context(self, **kwargs):
+        self.contexts.append(kwargs)
         return _FakeContext()
 
     def close(self):
@@ -506,13 +510,16 @@ class _FakeChromium:
 
     def __init__(self, failures: int = 0) -> None:
         self.calls: list[dict] = []
+        self.browsers: list[_FakeBrowser] = []
         self.failures = failures
 
     def launch(self, **kwargs):
         self.calls.append(kwargs)
         if len(self.calls) <= self.failures:
             raise RuntimeError("Executable doesn't exist at /home/x/.cache/ms-playwright/chromium-1/chrome")
-        return _FakeBrowser()
+        browser = _FakeBrowser()
+        self.browsers.append(browser)
+        return browser
 
 
 class _FakePlaywright:
@@ -576,6 +583,37 @@ def test_chromium_stage_retries_with_packaged_binary_when_playwright_launch_fail
     assert len(runtime.chromium.calls) == 2
     assert "executable_path" not in runtime.chromium.calls[0]
     assert runtime.chromium.calls[1]["executable_path"] == "/usr/bin/chromium"
+
+
+@pytest.mark.parametrize(
+    "requested,expected",
+    [
+        ("de_DE.UTF-8@euro", "de-DE"),
+        ("de_DE.UTF-8", "de-DE"),
+        ("en_US", "en-US"),
+        ("C", "en-US"),
+        ("C.UTF-8", "en-US"),
+        ("POSIX", "en-US"),
+        ("not a locale", "en-US"),
+    ],
+)
+def test_chromium_stage_normalizes_an_explicit_locale(monkeypatch, requested, expected):
+    """F2: a caller-supplied locale goes through the resolver before ``new_context``.
+
+    Chromium accepts ``locale='C'`` at context creation and rejects it later at
+    ``new_page()``, so the assertion is on the value handed to ``new_context`` and to
+    ``--lang``, not on a page having loaded.
+    """
+    runtime = _install_fake_playwright(monkeypatch)
+    monkeypatch.setattr(
+        "sluice.ladder.playwright_chromium_build", lambda: "/home/x/.cache/ms-playwright/chromium-1"
+    )
+
+    outcome = chromium_stage("https://example.test/page", locale=requested)
+
+    assert outcome.block_class == "ok", outcome.reason or outcome.error
+    assert runtime.chromium.browsers[0].contexts[0]["locale"] == expected
+    assert f"--lang={expected}" in runtime.chromium.calls[0]["args"]
 
 
 @pytest.mark.parametrize(

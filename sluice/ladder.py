@@ -527,6 +527,10 @@ def chromium_stage(
     no plugins and a ``HeadlessChrome`` user agent (RESEARCH-blocks.md:25-28, 71-77).
     ``--disable-blink-features=AutomationControlled`` is what actually clears
     ``navigator.webdriver`` without a detectable JS patch.
+
+    Every locale that reaches ``new_context`` is normalized first, including a caller
+    supplied one: Chromium accepts ``locale='C'`` at context creation and only fails at
+    ``new_page()`` with ``Emulation.setLocaleOverride: Invalid locale name``.
     """
     started = time.monotonic()
     try:
@@ -540,7 +544,7 @@ def chromium_stage(
             reason="Playwright is not installed (run `hermes sluice install playwright`)",
         )
 
-    browser_locale = locale or host_locale()
+    browser_locale = normalize_locale(locale) if locale else host_locale()
     zone = timezone_id or host_timezone()
     args = [
         "--headless=new",
