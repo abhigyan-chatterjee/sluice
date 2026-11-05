@@ -266,6 +266,45 @@ def _sleepy_worker(connection, seconds: float) -> None:  # pragma: no cover - ch
     connection.send(("ok", []))
 
 
+def _capture_wall_clock(monkeypatch):
+    seen: dict[str, float] = {}
+
+    def fake_run(target, args, *, timeout=12.0):
+        seen["timeout"] = timeout
+        return "ok", []
+
+    monkeypatch.setattr("sluice.backends.ddgs.run_in_child", fake_run)
+    return seen
+
+
+def test_ddgs_honours_the_router_budget(monkeypatch):
+    """PLAN.md:68: the 2.5 s per-backend budget must reach the child process."""
+    seen = _capture_wall_clock(monkeypatch)
+    result = make_backend("ddgs", settings()).search("q", timeout=1.25)
+    assert result["ok"] is True
+    assert seen["timeout"] == 1.25
+
+
+def test_ddgs_budget_never_exceeds_the_hard_wall_clock(monkeypatch):
+    seen = _capture_wall_clock(monkeypatch)
+    make_backend("ddgs", settings()).search("q", timeout=30)
+    assert seen["timeout"] == 12.0
+
+
+def test_ddgs_direct_call_gets_the_full_wall_clock(monkeypatch):
+    seen = _capture_wall_clock(monkeypatch)
+    make_backend("ddgs", settings()).search("q")
+    assert seen["timeout"] == 12.0
+
+
+def test_ddgs_timeout_names_the_budget_it_used(monkeypatch):
+    monkeypatch.setattr("sluice.backends.ddgs.run_in_child", lambda *args, **kwargs: ("timeout", None))
+    result = make_backend("ddgs", settings()).search("q", timeout=2.5)
+    assert result["ok"] is False
+    assert result["kind"] == "timeout"
+    assert "2.5s" in result["error"]
+
+
 # ── exa ───────────────────────────────────────────────────────────────────────────
 
 

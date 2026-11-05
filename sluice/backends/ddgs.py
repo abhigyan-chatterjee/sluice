@@ -15,7 +15,7 @@ import time
 from typing import Any, Callable, Sequence
 
 from . import Backend, BackendSpec
-from ._http import failure, search_row
+from ._http import call_timeout, failure, search_row
 
 SPEC = BackendSpec(
     id="ddgs",
@@ -141,11 +141,14 @@ class DdgsBackend(Backend):
                     "out_of_credit": False, "retry_after": None, "status": 200, "kind": "ok"}
 
         started = time.monotonic()
-        status, payload = run_in_child(_worker, (query, safe_limit, timelimit))
+        # The router's per-backend budget is shorter than the hard wall clock, so it
+        # shortens this call; a direct call (the CLI, a probe) gets the full 12 s.
+        wall_clock = call_timeout(kwargs, WALL_CLOCK_SECONDS)
+        status, payload = run_in_child(_worker, (query, safe_limit, timelimit), timeout=wall_clock)
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         if status == "timeout":
             return failure(
-                f"ddgs did not answer within {int(WALL_CLOCK_SECONDS)}s and the worker was killed",
+                f"ddgs did not answer within {wall_clock:.1f}s and the worker was killed",
                 kind="timeout",
             )
         if status == "error":
