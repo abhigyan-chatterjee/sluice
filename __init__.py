@@ -20,12 +20,14 @@ __all__ = ["__version__", "register"]
 
 
 def register(ctx) -> None:
-    """Register the Sluice provider and the ``hermes sluice`` command tree.
+    """Register the Sluice provider, the ``hermes sluice`` command tree and the skill.
 
     Imports are function-local on purpose: a module-scope ``from .sluice.provider import``
     would drag ``agent.*`` into the validation probe, which runs without Hermes on the
     import path.
     """
+    from pathlib import Path
+
     from .sluice.cli import handle_command, setup_parser
     from .sluice.provider import SluiceWebSearchProvider
 
@@ -48,3 +50,16 @@ def register(ctx) -> None:
             "backend and clear caches. See `hermes sluice --help`."
         ),
     )
+
+    # The bundled skill (PLAN.md:144-150). Optional on purpose: a pip install of the
+    # ``sluice`` package does not ship this directory, and a missing doc file must not
+    # stop the provider from loading.
+    register_skill = getattr(ctx, "register_skill", None)
+    skill_path = Path(__file__).resolve().parent / "skills" / "sluice" / "SKILL.md"
+    if callable(register_skill) and skill_path.is_file():
+        register_skill(
+            "sluice",
+            skill_path,
+            "Use when a web fetch is blocked or a search returns nothing useful: the nine "
+            "block classes, when the fetch ladder climbs, and how to read `hermes sluice doctor`.",
+        )

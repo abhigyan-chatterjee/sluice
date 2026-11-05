@@ -42,6 +42,7 @@ class RecordingContext:
     def __init__(self) -> None:
         self.providers = []
         self.cli_commands = []
+        self.skills = []
         self.settings: dict = {}
 
     def register_web_search_provider(self, provider):
@@ -57,6 +58,9 @@ class RecordingContext:
                 "description": description,
             }
         )
+
+    def register_skill(self, name, path, description="", frontmatter=None):
+        self.skills.append({"name": name, "path": path, "description": description})
 
     def get_config(self, key, default=None):
         return self.settings.get(key, default)
@@ -162,6 +166,20 @@ def test_register_adds_the_sluice_cli_command(plugin_module):
     assert callable(command["handler_fn"])
 
 
+def test_register_adds_the_bundled_skill(plugin_module):
+    """PLAN.md:144-150: the skill ships with the plugin and loads through skill_view."""
+    ctx = RecordingContext()
+    plugin_module.register(ctx)
+
+    assert [skill["name"] for skill in ctx.skills] == ["sluice"]
+    skill = ctx.skills[0]
+    assert Path(skill["path"]).is_file()
+    assert skill["path"].name == "SKILL.md"
+    text = Path(skill["path"]).read_text(encoding="utf-8")
+    assert text.startswith("---\nname: sluice\n")
+    assert "hermes sluice doctor" in text
+
+
 def test_register_fails_loudly_without_the_provider_surface(plugin_module):
     """An older Hermes must raise a named error, not register a dead plugin."""
 
@@ -210,13 +228,15 @@ def test_cli_rejects_unknown_subcommand_and_bad_install_target():
         build_parser().parse_args(["install", "chromium"])
 
 
-def test_cli_handler_fails_unattended_until_implemented(capsys):
-    """T1 ships the parser only: every command must exit non-zero and say why."""
+def test_cli_handler_runs_doctor_unattended(capsys, tmp_path, monkeypatch):
+    """T9 replaced the T1 stub: every command exits on its own and prints a next step."""
     from sluice.cli import build_parser, handle_command
 
+    monkeypatch.setenv("SLUICE_DATA_DIR", str(tmp_path))
     args = build_parser().parse_args(["doctor"])
-    assert handle_command(args) == 1
-    assert "T9" in capsys.readouterr().err
+    assert handle_command(args) == 0
+    out = capsys.readouterr().out
+    assert "Sluice" in out and "next: hermes sluice setup --apply" in out
 
 
 def test_cli_setup_parser_attaches_to_a_foreign_parser():
