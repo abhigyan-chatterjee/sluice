@@ -1,0 +1,190 @@
+[
+  {
+    "name": "ok_plain_html",
+    "body": "ok.html",
+    "status": 200,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "ok"
+  },
+  {
+    "name": "js_shell",
+    "body": "js.html",
+    "status": 200,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "js_required"
+  },
+  {
+    "name": "cloudflare_challenge_403",
+    "body": "cf.html",
+    "status": 403,
+    "headers": {
+      "cf-mitigated": "challenge"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "cloudflare_challenge_2xx",
+    "body": "cf.html",
+    "status": 200,
+    "headers": {
+      "cf-mitigated": "challenge"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "datadome_protected",
+    "body": "datadome.html",
+    "status": 403,
+    "headers": {
+      "x-datadome": "protected"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "human_px_captcha",
+    "body": "human.html",
+    "status": 200,
+    "headers": {
+      "content-type": "text/html"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "kasada_429",
+    "body": "kasada.html",
+    "status": 429,
+    "headers": {
+      "x-kpsdk-ct": "abc"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "akamai_sec_cpt_428",
+    "body": "akamai.html",
+    "status": 428,
+    "headers": {
+      "sec-cpt": "1"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "akamai_grn_403",
+    "body": "akamai.html",
+    "status": 403,
+    "headers": {
+      "akamai-grn": "0.1"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "imperva_200_83_byte",
+    "body": "imperva.html",
+    "status": 200,
+    "headers": {
+      "x-iinfo": "7-1-2"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "aws_waf_202",
+    "body": "awswaf.html",
+    "status": 202,
+    "headers": {
+      "x-amzn-waf-action": "challenge"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "fastly_406",
+    "body": "fastly.html",
+    "status": 406,
+    "headers": {
+      "set-cookie": "_fs_ch_x=1; Path=/"
+    },
+    "content_type": "text/html",
+    "expected": "challenge"
+  },
+  {
+    "name": "forbidden_403",
+    "body": "plain.html",
+    "status": 403,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "forbidden"
+  },
+  {
+    "name": "auth_401",
+    "body": "plain.html",
+    "status": 401,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "auth_required"
+  },
+  {
+    "name": "payment_402",
+    "body": "plain.html",
+    "status": 402,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "payment_required"
+  },
+  {
+    "name": "crawler_price",
+    "body": "plain.html",
+    "status": 200,
+    "headers": {
+      "crawler-price": "0.01 USD"
+    },
+    "content_type": "text/html",
+    "expected": "payment_required"
+  },
+  {
+    "name": "rate_limited_429",
+    "body": "plain.html",
+    "status": 429,
+    "headers": {
+      "retry-after": "2"
+    },
+    "content_type": "text/html",
+    "expected": "rate_limited"
+  },
+  {
+    "name": "rate_limited_503",
+    "body": "plain.html",
+    "status": 503,
+    "headers": {
+      "retry-after": "5"
+    },
+    "content_type": "text/html",
+    "expected": "rate_limited"
+  },
+  {
+    "name": "server_error_500",
+    "body": "plain.html",
+    "status": 500,
+    "headers": {},
+    "content_type": "text/html",
+    "expected": "error"
+  },
+  {
+    "name": "json_body_is_ok",
+    "body": "data.json",
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "content_type": "application/json",
+    "expected": "ok"
+  }
+]
