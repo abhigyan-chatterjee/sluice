@@ -15,12 +15,14 @@ The four items left open in the design are settled here.
 all twelve vendors. No builder guesses left in that file. Perplexity and Parallel extract
 paths are named; xAI is marked LLM-mediated and fragile.
 
-**2. Cache and circuit numbers (T2).** Search TTL 900 s general, 300 s for news; extract
-TTL 3600 s; negative cache 60 s for a failed URL so a dead link is not re-fetched on every
-call; domain memory 24 h. Circuit: three consecutive failures opens for 15 min; one quota
-error opens for 60 min; a success resets both. Eviction: on write, if the DB exceeds
-150 MB, delete expired rows first, then least-recently-hit rows down to 200 MB. One
-`VACUUM` per week, at most. All of it configurable with those defaults.
+**2. Cache and circuit numbers (T2).** The authoritative source of truth for all store thresholds is `sluice/store.py:StorePolicy`.
+Search TTL 900 s general, 300 s for news; extract TTL 3600 s; negative cache 60 s for a
+failed URL so a dead link is not re-fetched on every call; domain memory 24 h (86400 s).
+Circuit: three consecutive failures opens for 15 min (900 s); one quota error opens for
+60 min (3600 s); a success resets both. Eviction: on write, if the DB exceeds 200 MB
+(`cache_max_mb`), delete expired rows first, then least-recently-hit rows down to a 150 MB
+low-water mark (`cache_low_water_mb`) to provide effective hysteresis. One `VACUUM` per week
+(604800 s), at most. All of it configurable with those defaults.
 
 **3. Pane layout (T11).** Right-side pane, 380 px: header with status dot, active backend
 count and Refresh; a 12-row backend table (Name, Tier, Key, Health, p50, Calls, Spend) with

@@ -198,13 +198,18 @@ single header line at the top of `content`, with the full chain kept in SQLite a
 
 ### State and cache
 
+The authoritative source of truth for all store thresholds is `sluice/store.py:StorePolicy`.
+
 SQLite in the plugin data directory: `backend_state`, `usage`, `cache`, `domain_memory`.
-Circuit: three consecutive failures or one quota error opens it for 15 minutes, with
-exponential backoff capped at an hour. Cache keys are normalized query plus filters plus
-limit, TTL 15 minutes general and 5 minutes for news; extract cache is keyed by URL and
-format with a 1 hour TTL. LRU eviction at a configurable cap, default 200 MB.
-`domain_memory` stores `(domain, block_class, stage_that_worked, timestamp)` with a 24 hour
-TTL, so a site that always challenges starts at the browser rung next time.
+Circuit: three consecutive failures opens it for 15 minutes (900 s), while one quota error
+opens it for 60 minutes (3600 s); a successful request resets both. Cache keys are
+normalized query plus filters plus limit, TTL 15 minutes (900 s) general and 5 minutes (300 s)
+for news; extract cache is keyed by URL and format with a 1 hour (3600 s) TTL; negative
+cache for failed URLs is 60 s. Eviction uses a hysteresis LRU band: on write, if the DB
+exceeds the 200 MB cap (`cache_max_mb`), expired rows and least-recently-hit entries are
+evicted down to a 150 MB low-water mark (`cache_low_water_mb`), with at most one `VACUUM` per
+week (604800 s). `domain_memory` stores `(domain, block_class, stage_that_worked, timestamp)`
+with a 24 hour (86400 s) TTL, so a site that always challenges starts at the browser rung next time.
 
 The outer Hermes cache is turned off during setup (`web.cache_enabled: false`) so there is
 exactly one cache with one TTL; `hermes sluice cache clear` clears both anyway.
@@ -324,9 +329,9 @@ The four items this document left open are settled in `PLAN.md` and `references/
 
 - Vendor payloads: `references/endpoints.md`, exact request and response shapes for all
   twelve vendors, with failure mapping and the two-key Brave trap.
-- Cache, circuit and eviction numbers: `PLAN.md`, Closed gap 2. Search TTL 900 s general
-  and 300 s news, extract 3600 s, negative cache 60 s, domain memory 24 h, circuit 15 min
-  or 60 min on quota, LRU to a 200 MB cap.
+- Cache, circuit and eviction numbers: `sluice/store.py:StorePolicy` (authoritative source of truth) and `PLAN.md` Closed gap 2. Search TTL 900 s general
+  and 300 s news, extract 3600 s, negative cache 60 s, domain memory 24 h (86400 s), circuit 15 min (900 s) after 3 failures
+  or 60 min (3600 s) on quota error, hysteresis LRU eviction triggering at 200 MB down to 150 MB low-water mark, and at most one `VACUUM` per week (604800 s).
 - Pane layout, sizes, contribution areas and polling: `PLAN.md`, Closed gap 3.
 - Demo fixture and the deterministic challenge beat: `PLAN.md`, Closed gap 4.
 
