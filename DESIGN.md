@@ -167,8 +167,10 @@ shows a toggle so the ordering matches reality.
 Within a tier, candidates sort by latency EMA among healthy backends. A backend is
 skipped when its key is missing, its circuit is open, its quota window is exhausted, or
 the query type it cannot serve (news vs docs) is requested and another can. Each search
-gets a 2.5 s per-backend budget and an 8 s total budget. A light query classifier biases
-order inside a tier; it never promotes a paid backend above a free one.
+gets a 2.5 s per-backend budget and an 8 s total budget, shared sequentially: an attempt
+that declares a wider window reserves one default window for the candidates behind it, so
+`ddgs` gets 5.5 s of the 8 s and the next candidate keeps its full 2.5 s. A light query
+classifier biases order inside a tier; it never promotes a paid backend above a free one.
 
 ### Extract chain and fetch ladder
 

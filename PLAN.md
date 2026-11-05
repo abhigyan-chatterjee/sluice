@@ -70,7 +70,10 @@ Files: `sluice/router.py`, `tests/test_router.py`.
   wrong capability; latency EMA ordering inside a tier.
 - 2.5 s per-backend budget, 8 s total, sequential. A backend may declare a wider window of
   its own (ddgs does, because it is a local multi-engine scrape, not an API call); the total
-  budget still bounds every attempt.
+  budget still bounds every attempt. While another candidate is still behind the current
+  one, one default window is reserved out of what remains, so a widened attempt is capped at
+  the total minus that window: ddgs gets 5.5 s of the 8 s and the next candidate keeps its
+  full 2.5 s.
 - Attach `backend`, `tier`, `cached`, `fallback_used`, `elapsed_ms` to every result.
 - Done: tests prove a free backend beats a paid one, a failed backend falls through, and a
   total-budget expiry returns a clean error listing each backend's reason.
