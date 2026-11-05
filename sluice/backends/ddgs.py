@@ -38,12 +38,11 @@ SPEC = BackendSpec(
     secret_env=None,
     summary="Local ddgs package, no HTTP; runs in a disposable child process with a hard kill and a 12 s wall clock.",
     task="T4",
-    #: Measured on this repo's dev machine: a real ddgs call is min 1.9 s, median 6.3 s, max
-    #: 7.4 s, because the package fans out across several engines and merges them. The
-    #: router's global 2.5 s window would kill it before it answered on ~4 calls in 5, so the
-    #: backend asks for a wider window of its own. The router never grants the whole total:
-    #: while a candidate is still behind this one it reserves a default window for it, so with
-    #: the default 8 s total ddgs gets 5.5 s. Raise ``total_budget_ms`` to grant more.
+    #: The package fans out across several engines and merges them, so a live call regularly
+    #: exceeds the router's 2.5 s default window; the backend therefore asks for a wider
+    #: window of its own. The router never grants the whole total: while a candidate is still
+    #: behind this one it reserves a default window for it, so with the default 8 s total ddgs
+    #: gets 5.5 s. Raise ``total_budget_ms`` to grant more.
     budget_ms=8000,
 )
 

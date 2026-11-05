@@ -357,7 +357,7 @@ def test_a_backend_that_eats_its_whole_window_cannot_starve_the_next():
 
 
 def test_ddgs_asks_for_a_window_wider_than_the_global_default():
-    """The real ddgs adapter measures 1.9-7.4 s per call, so 2.5 s would never let it answer."""
+    """The real ddgs adapter is a local multi-engine scrape, so it asks for more than 2.5 s."""
     from sluice.backends.ddgs import SPEC
 
     assert SPEC.budget_ms > PER_BACKEND_BUDGET_MS

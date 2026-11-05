@@ -117,8 +117,7 @@ tools safely.
    `per_backend_budget_ms` defaults to 2500 ms; a backend that declares no `budget_ms` gets
    that default. A backend with a slower transport may declare a wider window of its own:
    `ddgs` declares 8000 ms because it is a local multi-engine scrape rather than an API
-   call; measured on one development machine, a real call takes 1.9 s to 7.4 s (median
-   6.3 s).
+   call, and a live call regularly exceeds the 2500 ms default.
    The `total_budget_ms` default of 8000 ms is shared by the whole ladder, not granted to
    each attempt. While another candidate is still behind this one, one default window is
    reserved out of what is left, so a widened attempt is capped at `total - per_backend`

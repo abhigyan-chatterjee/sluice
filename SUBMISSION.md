@@ -13,7 +13,7 @@ This document provides the complete project submission summary for **Sluice**, d
 - **Compatibility**: Hermes Agent `>=0.22.5`
 
 ### What Sluice Is
-Sluice is a production-grade, tiered, free-first web search and extraction engine for Hermes Agent. It unifies 12 search engines and a local anti-bot extraction ladder behind Hermes' native search and extraction provider interfaces. Sluice prioritizes zero-cost local and keyless engines before consuming paid commercial API credits, detects and circumvents bot mitigations locally, persists health and cache state in a single SQLite WAL database, and exposes real-time controls through Hermes Desktop and CLI.
+Sluice is a production-grade, tiered, free-first web search and extraction engine for Hermes Agent. It unifies 12 search engines and a local fetch ladder behind Hermes' native search and extraction provider interfaces. Sluice prioritizes zero-cost local and keyless engines before consuming paid commercial API credits, and for extraction it tries plain HTTP first, escalates to headless Chromium when the page needs JavaScript or answers with a bot challenge, escalates to a local Camofox browser session next, and stops at 401, 402 and 403 and at robots.txt, `X-Robots-Tag` or `Content-Signal` refusals, quoting the rule it obeyed. It persists health and cache state in a single SQLite WAL database, and exposes real-time controls through Hermes Desktop and CLI.
 
 ### Closed Capability Gaps
 1. **Vendor Payloads & Normalization (`references/endpoints.md`, `sluice/backends/_http.py`)**:

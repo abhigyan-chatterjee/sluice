@@ -221,11 +221,11 @@ is never labelled paid, and a paid backend never jumps a free one.
 
 Each search attempt gets a 2500 ms window by default. A backend may declare a wider window
 of its own, and `ddgs` does: it is a local multi-engine scrape rather than an API call, and
-measurements on one development machine put a real `ddgs` call at 1.9 s to 7.4 s, median
-6.3 s. The wider window only ever widens that attempt, and the 8000 ms total budget is shared
-by the whole ladder: while a candidate is still behind the current one, the router keeps a
-default 2500 ms window in reserve for it, so with the defaults `ddgs` gets 5500 ms and the
-next backend is still attemptable.
+a live call regularly exceeds the 2500 ms default, so `ddgs` declares 8000 ms. The wider
+window only ever widens that attempt, and the 8000 ms total budget is shared by the whole
+ladder: while a candidate is still behind the current one, the router keeps a default 2500 ms
+window in reserve for it, so with the defaults `ddgs` gets 5500 ms and the next backend is
+still attemptable.
 
 ## Network and process disclosures
 

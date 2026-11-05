@@ -49,11 +49,11 @@ Routing is sequential. There is no parallel fan-out and no result fusion in 1.0.
 
 The global default is a 2500 ms window per attempt and an 8000 ms budget per search. A
 backend may declare a wider window of its own, and `ddgs` does: it runs a local multi-engine
-scrape rather than an API call, and measurements on one development machine put a real call
-at 1.9 s to 7.4 s, median 6.3 s. A declared window only widens that one attempt, and the
-router keeps a default window in reserve for whatever is behind it: with the defaults `ddgs`
-gets 5500 ms and the next candidate still gets 2500 ms. Raise `total_budget_ms` to give
-`ddgs` its whole declared 8000 ms.
+scrape rather than an API call, and a live call regularly exceeds the 2500 ms default. A
+declared window only widens that one attempt, and the router keeps a default window in
+reserve for whatever is behind it: with the defaults `ddgs` gets 5500 ms and the next
+candidate still gets 2500 ms. Raise `total_budget_ms` to give `ddgs` its whole declared
+8000 ms.
 
 ## Cache and circuit settings
 
