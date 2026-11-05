@@ -140,7 +140,7 @@ The following checklist explicitly enumerates items that require personal execut
 | **Plugin Name** | `sluice` | `plugin.yaml:1` |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
-| **Pinned Commit SHA** | *(Insert verified 40-char SHA at release cut)* | e.g. `5a6c9ee4724b6cb6cef3f2a81fe4dd3114c81ef4` |
+| **Pinned Commit SHA** | `03cefae30709d6034989e22563aadc68ce555269` (tracks latest `origin/main`) | Verified HEAD commit |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
 | **Contact Email** | `officialpxrpose@gmail.com` / `abhi@nullbit.in` | Verified profile contact |
