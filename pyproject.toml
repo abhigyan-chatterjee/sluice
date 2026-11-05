@@ -28,3 +28,7 @@ include = ["sluice*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put the repo root on sys.path for every invocation: CI runs the `pytest` console script,
+# which does not insert the cwd the way `python -m pytest` does, and the ladder tests import
+# the fixture server from `demo/`.
+pythonpath = ["."]
