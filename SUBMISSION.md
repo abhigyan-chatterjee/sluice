@@ -32,7 +32,7 @@ Sluice is a production-grade, tiered, free-first web search and extraction engin
   Implements a nine-class block classifier: `ok`, `js_required`, `rate_limited`, `challenge`, `forbidden`, `auth_required`, `payment_required`, `policy_blocked` and `error`. Vendor markers (Cloudflare, Imperva, PerimeterX/HUMAN, Kasada, Akamai, DataDome, AWS WAF, Fastly) feed the `challenge` class. Escalates extraction across three stages: HTTP (httpx + trafilatura) → real Chromium through Playwright → the Camofox REST server, stopping at authentication and policy boundaries. Checks `robots.txt` before the first request and `X-Robots-Tag`/`Content-Signal` on every response.
 
 ### Hermetic Test Story
-- **Test Results**: `527 passed, 10 skipped`, 0 failed across 12 test modules at the pinned commit `c385de2` (GitHub Actions run 42075028409 on that SHA, green). The count is a snapshot of that commit; the latest `main` run carries the current number. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`.
+- **Test Results**: `552 passed, 10 skipped`, 0 failed across 13 test modules at the pinned commit `6749fc2` (GitHub Actions run 42096478007 on that SHA, green). An earlier snapshot at `c385de2` measured `527 passed, 10 skipped` across 12 modules (run 42075028409). Both counts are snapshots of their commit; re-run `pytest -q` at the tip of `main` for the current number. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`.
 - **Hermetic Isolation**: Tests run against a synthetic temporary `HERMES_HOME` with zero writes to host configuration or live agent state.
 - **Validation**:
   - `hermes plugins doctor --ci`: Passed (exit code 0).
@@ -98,7 +98,7 @@ hermes config set web.extract_backend sluice
 ```
 
 ### Verification
-- 527 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit (CI run 42075028409).
+- 552 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit `6749fc2` (CI run 42096478007).
 - `hermes plugins doctor --ci` and `hermes plugins validate` pass with 0 errors.
 ```
 
@@ -142,14 +142,14 @@ The following checklist explicitly enumerates items that require personal execut
 | **Plugin Name** | `sluice` | `plugin.yaml:1` |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
-| **Pinned Commit SHA** | `c385de21e6c4558259ff61cbf111e3070812f339` (verified commit — the last commit before this docs-only submission edit; use the tip of `main` when submitting) | CI run 42075028409 green on this SHA: 527 passed, 10 skipped |
+| **Pinned Commit SHA** | `6749fc203acc94a12c29aa865daeff4c4a074273` (verified commit — the tree the catalog entry pins; re-check against the tip of `main` at submit time) | CI run 42096478007 green on this SHA: 552 passed, 10 skipped |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
 | **Contact Email** | `officialpxrpose@gmail.com` / `abhi@nullbit.in` | Verified profile contact |
 | **Hermes Compatibility** | `>=0.22.5` | `plugin.yaml:8` |
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
 | **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
-| **Test Verification** | 527 tests passed, 10 skipped (live opt-in), 0 failed across 12 modules at `c385de2` (CI run 42075028409); hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
+| **Test Verification** | 552 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `6749fc2` (CI run 42096478007); hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
 | **Demo Video URL** | *(Requires Abhi)* | Paste URL after recording |
 | **Catalog PR URL** | *(Requires Abhi)* | Paste URL after opening PR |
 | **Confirmation Signature** | *(Requires Abhi)* | Abhigyan Chatterjee |
