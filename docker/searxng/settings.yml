@@ -1,0 +1,22 @@
+# SearXNG settings for the Sluice reference deployment.
+#
+# The only change from the stock configuration that Sluice needs is
+# `search.formats: [html, json]`: the JSON API is off by default, and Sluice talks to it.
+# Bind this instance to localhost (see docker-compose.yml); it is a scraper front end.
+use_default_settings: true
+
+general:
+  instance_name: "Sluice SearXNG"
+
+server:
+  # Replace this before exposing the instance anywhere. It signs the session cookie.
+  secret_key: "sluice-local-only-change-me"
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json

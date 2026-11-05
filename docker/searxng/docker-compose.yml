@@ -1,0 +1,21 @@
+# Reference SearXNG for Sluice — local only, JSON enabled.
+#
+# Sluice talks to SearXNG's JSON API, which the default configuration disables. This file
+# turns it on. Run from this directory:
+#
+#   docker compose up -d
+#   export SEARXNG_URL=http://localhost:8080
+#   curl -s "$SEARXNG_URL/search?q=sluice&format=json" | head -c 200
+#
+# Bind it to localhost only. It is a scraper front end: do not expose it to the internet.
+services:
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: sluice-searxng
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    restart: unless-stopped
