@@ -22,11 +22,10 @@ uv pip install -e ".[dev]"
 .venv/bin/pytest -q
 ```
 
-In a fresh copy of the committed tree without a `.git` directory, the suite reports
-`413 passed, 12 skipped`. Inside a git checkout it reports `415 passed, 10 skipped` (both
-measured on 5 November 2026). `tests/test_surfaces.py` has two tests that skip when there is
-no `.git`, because they assert that the dashboard entry and API files are tracked and not
-gitignored. The ten skips in a checkout are the opt-in live vendor tests described below.
+The default suite is hermetic and passes in both shapes of checkout. A copy of the committed
+tree without a `.git` directory skips two tests in `tests/test_surfaces.py`, which assert
+that the dashboard entry and API files are tracked and not gitignored; a git checkout runs
+them. Both runs skip the opt-in live vendor tests described below.
 
 The `dev` extra adds `pytest` and `fastapi`. `fastapi` is a Hermes dependency at runtime, not
 a package dependency, so installing it is what lets the route tests in
@@ -61,9 +60,8 @@ credentials:
 SLUICE_LIVE_TESTS=1 .venv/bin/pytest -q -k live
 ```
 
-Ten tests are selected, five paid vendors skip without credentials, and a keyless vendor can
-fail when its public quota is exhausted. That dependence on vendor state is why CI runs the
-hermetic suite only.
+Vendors without credentials skip, and a keyless vendor can fail when its public quota is
+exhausted. That dependence on vendor state is why CI runs the hermetic suite only.
 
 ## The fixture server
 

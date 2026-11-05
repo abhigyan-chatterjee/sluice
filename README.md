@@ -321,7 +321,7 @@ Not in this release:
 ```sh
 uv venv
 uv pip install -e ".[dev]"
-.venv/bin/pytest -q           # 415 passed, 10 skipped in a git checkout
+.venv/bin/pytest -q
 ```
 
 Live vendor calls are opt-in with `SLUICE_LIVE_TESTS=1`. The fixture server for the demo is
