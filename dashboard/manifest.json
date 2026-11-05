@@ -1,0 +1,13 @@
+{
+  "name": "sluice",
+  "label": "Sluice",
+  "description": "Free-first web search and extraction router: twelve backends, circuit breakers and a policy-first fetch ladder. The desktop pane is the UI; this entry only provides the backend routes.",
+  "icon": "Waves",
+  "version": "1.0.0",
+  "tab": {
+    "hidden": true
+  },
+  "slots": [],
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

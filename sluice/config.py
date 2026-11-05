@@ -80,6 +80,30 @@ SECRET_ENVS: tuple[str, ...] = (
 #: Not a Sluice backend: Browserbase is a browser-engine choice Hermes owns.
 EXTRA_ENVS: tuple[str, ...] = ("BROWSERBASE_API_KEY", "CAMOFOX_URL")
 
+#: The manifest name, also the plugin id Hermes stores settings under.
+PLUGIN_ID = "sluice"
+
+
+def saved_settings() -> dict[str, Any]:
+    """Values written by Settings ▸ Plugins (``plugins.entries.sluice.settings``).
+
+    Read-only and Hermes-optional: outside Hermes the CLI and tests run on defaults plus
+    the environment, exactly as they did before this function existed.
+    """
+    try:
+        from hermes_cli.config import load_config_readonly
+    except ImportError:
+        return {}
+    try:
+        config = load_config_readonly() or {}
+        plugins = config.get("plugins")
+        entries = plugins.get("entries") if isinstance(plugins, MutableMapping) else None
+        entry = entries.get(PLUGIN_ID) if isinstance(entries, MutableMapping) else None
+        values = entry.get("settings") if isinstance(entry, MutableMapping) else None
+    except Exception:  # noqa: BLE001 - a config read must never break a search
+        return {}
+    return dict(values) if isinstance(values, MutableMapping) else {}
+
 
 def secret(env: str) -> str:
     """Resolve one credential without ever raising. Empty string when it is not set."""
@@ -97,7 +121,10 @@ def load_settings(ctx: Any = None) -> dict[str, Any]:
     """Defaults, then the user's plugin settings, then credentials and env overrides.
 
     ``ctx.get_config(key, default)`` returns the default when the user has not set the key,
-    so a missing value keeps the manifest default instead of becoming ``None``.
+    so a missing value keeps the manifest default instead of becoming ``None``. Without a
+    context (the CLI, the dashboard API, the desktop pane's backend) the same values are
+    read straight from Hermes' config file — ``plugins.entries.sluice.settings`` — so every
+    surface sees one configuration.
     """
     settings: dict[str, Any] = dict(DEFAULTS)
 
@@ -111,6 +138,10 @@ def load_settings(ctx: Any = None) -> dict[str, Any]:
                     continue
                 if value is not None:
                     settings[key] = value
+    else:
+        for key, value in saved_settings().items():
+            if key in settings and value is not None:
+                settings[key] = value
 
     for env in SECRET_ENVS:
         settings[env] = secret(env)
