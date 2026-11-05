@@ -190,6 +190,7 @@ field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_
 | `HERMES_HOME` | `sluice/manage.py:92-95` | Hermes home used to find `cache/web`, `plugin-data/sluice/camofox` and installed plugins. |
 | `PLAYWRIGHT_BROWSERS_PATH` | `sluice/manage.py:121-123` | Where detection looks for the Playwright Chromium build. |
 | `SLUICE_CAMOFOX_DIR` | `sluice/manage.py:381-385` | Install directory for the npm fallback of the Camofox server. |
+| `SLUICE_LIVE_TESTS` | `tests/test_backends.py:864-878` | Test switch only, never read by the plugin at runtime. `1` opts into the live vendor calls. |
 | `SEARXNG_URL` | nothing | Printed in messages, not read. Use the `searxng_url` setting. |
 
 ## Hermes-level keys Sluice depends on
