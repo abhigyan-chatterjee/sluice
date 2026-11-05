@@ -94,7 +94,7 @@ def get_settings() -> dict[str, Any]:
 
 @router.post("/settings")
 def post_settings(payload: dict[str, Any] = Body(default={})) -> dict[str, Any]:
-    """Write settings through ``hermes_cli.plugins_settings`` (secrets refused)."""
+    """Write settings through ``ctx.set_config`` (F5: public plugin API; secrets refused)."""
     body = payload if isinstance(payload, dict) else {}
     values = body.get("values") if isinstance(body.get("values"), dict) else body
     return _safe(api.save_settings_payload, values)

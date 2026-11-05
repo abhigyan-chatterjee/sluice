@@ -31,7 +31,7 @@ config_schema:
   circuit_quota_seconds: {type: int, default: 3600, label: "Quota open (s)", description: "Open duration after one quota error (PLAN.md:20-21)."}
   cache_max_mb: {type: int, default: 200, label: "Cache cap (MB)", description: "LRU eviction cap for the SQLite store (PLAN.md:22, DESIGN.md:205)."}
   # Local backends that are detected rather than keyed.
-  searxng_url: {type: str, default: "", label: "SearXNG URL", description: "Base URL of a running SearXNG with search.formats: [html, json] (references/endpoints.md:41)."}
+  searxng_url: {type: str, default: "", label: "SearXNG URL", description: "Base URL of a running SearXNG with search.formats: [html, json] (references/endpoints.md:41). A full http or https URL; SEARXNG_URL is read when this is empty. Trailing slashes are stripped and a malformed URL is refused with the reason."}
   # Per-backend plan. Free vs paid is a property of the entry, not of the credential: Exa,
   # Tavily, Firecrawl and Keenable use the same key on a free allowance and a paid plan
   # (DESIGN.md:161-165). The pane shows a toggle for each of these.

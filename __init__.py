@@ -29,7 +29,12 @@ def register(ctx) -> None:
     from pathlib import Path
 
     from .sluice.cli import handle_command, setup_parser
+    from .sluice.hostctx import set_host_ctx
     from .sluice.provider import SluiceWebSearchProvider
+
+    # The dashboard's plugin_api.py has no context of its own; park this one so the
+    # settings route writes through ctx.set_config (F5) instead of a private core import.
+    set_host_ctx(ctx)
 
     register_provider = getattr(ctx, "register_web_search_provider", None)
     if register_provider is None:

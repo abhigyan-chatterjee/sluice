@@ -232,8 +232,8 @@ Sluice makes network calls only when you or a Hermes tool ask it to. The destina
   when the ladder climbs, the same URL through Chromium or Camofox. Responses are not sent
   anywhere else.
 - **Local servers**: Camofox at `CAMOFOX_URL` (default `http://localhost:9377`) and SearXNG
-  at `searxng_url`, if you run them. Health is checked with `GET /health`, and SearXNG with
-  `GET /search`.
+  at `searxng_url` or `SEARXNG_URL`, if you run them. Health is checked with `GET /health`,
+  and SearXNG with `GET /search`.
 
 Local processes and binary use:
 

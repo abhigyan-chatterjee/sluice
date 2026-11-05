@@ -327,4 +327,11 @@ in the parent process. The `ddgs` rung therefore runs its query in a `subprocess
 `hermes_plugins` (`sluice/backends/ddgs.py:53-166`).
 
 `SEARXNG_URL` is read as a fallback for the `searxng_url` setting; an explicit plugin setting
-wins (`sluice/config.py:154-159`).
+wins. Either value is validated once in `sluice/config.py` (absolute http/https URL with a
+host, trailing slashes removed, path prefix kept) and a rejected address is dropped with its
+reason kept beside it, so no surface reports "not set" for an address the user did set
+(`sluice/config.py:45-79`, `sluice/config.py:196-201`).
+
+Settings writes go through `ctx.set_config()` (`sluice/hostctx.py`, `sluice/api.py:433-479`),
+the documented plugin API, so the module imports no private Hermes core path — which is what
+`hermes plugins validate` reports as clean.

@@ -18,6 +18,7 @@ from sluice.config import (
     configured_backends,
     default_plan,
     load_settings,
+    normalize_searxng_url,
     plan_key,
     plan_settings,
     tier_order,
@@ -207,3 +208,61 @@ def test_an_explicit_searxng_setting_overrides_the_env(monkeypatch):
     monkeypatch.setenv("SEARXNG_URL", "http://env.example:8080")
     settings = load_settings(FakeContext({"searxng_url": "http://plugin.example:8080"}))
     assert settings["searxng_url"] == "http://plugin.example:8080"
+
+
+def test_a_trailing_slash_is_stripped_so_search_never_doubles_it(monkeypatch):
+    for raw in ("http://127.0.0.1:8888/", "http://127.0.0.1:8888//"):
+        monkeypatch.setenv("SEARXNG_URL", raw)
+        assert load_settings(FakeContext({"searxng_url": ""}))["searxng_url"] == "http://127.0.0.1:8888"
+
+
+def test_a_path_prefix_survives_normalization(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", "https://search.example.com/searxng/")
+    settings = load_settings(FakeContext({"searxng_url": ""}))
+    assert settings["searxng_url"] == "https://search.example.com/searxng"
+    assert settings["searxng_url_error"] == ""
+
+
+def test_an_unset_url_is_empty_and_not_an_error():
+    settings = load_settings(FakeContext({"searxng_url": ""}))
+    assert settings["searxng_url"] == ""
+    assert settings["searxng_url_error"] == ""
+    assert "searxng" not in configured_backends(settings)
+
+
+def test_a_malformed_url_is_dropped_with_the_reason_kept(monkeypatch):
+    cases = {
+        "localhost:8888": "including the scheme",
+        "ftp://127.0.0.1:8888": "must use http or https",
+        "http://": "has no host",
+        "http://127.0.0.1:8888/?q=x": "without a query",
+    }
+    for raw, marker in cases.items():
+        monkeypatch.setenv("SEARXNG_URL", raw)
+        settings = load_settings(FakeContext({"searxng_url": ""}))
+        assert settings["searxng_url"] == "", raw
+        assert marker in settings["searxng_url_error"], raw
+        # A rejected address must never be routed from.
+        assert "searxng" not in configured_backends(settings), raw
+
+
+def test_the_plugin_setting_is_validated_by_the_same_rules(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", "http://127.0.0.1:8888")
+    settings = load_settings(FakeContext({"searxng_url": "not a url"}))
+    assert settings["searxng_url"] == ""
+    assert "including the scheme" in settings["searxng_url_error"]
+
+
+def test_the_backend_reports_the_malformed_reason_not_a_missing_variable():
+    from sluice.backends import make_backend
+
+    url, error = normalize_searxng_url("127.0.0.1:8888")
+    backend = make_backend("searxng", {"searxng_url": url, "searxng_url_error": error})
+    message = backend.missing_message()
+    assert "including the scheme" in message
+    assert "is not set" not in message
+    assert backend.mode() == "unavailable"
+
+    result = backend.search("q")
+    assert result["ok"] is False
+    assert "including the scheme" in result["error"]

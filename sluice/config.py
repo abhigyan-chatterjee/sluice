@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping
+from urllib.parse import urlsplit
 
 from .backends import BACKEND_MODULES
 
@@ -38,6 +39,46 @@ def plan_settings() -> dict[str, str]:
         for vendor in BACKEND_MODULES
         if vendor not in ("searxng", "ddgs")
     }
+
+
+#: Schemes a SearXNG instance can be reached on. Anything else is refused before a request.
+SEARXNG_SCHEMES: tuple[str, ...] = ("http", "https")
+
+
+def normalize_searxng_url(raw: Any) -> tuple[str, str]:
+    """Return ``(base_url, error)`` for one SearXNG instance address.
+
+    An empty value returns ``("", "")``: not configured is not a mistake. A value that is not
+    an absolute http(s) URL with a host is dropped and the second element says why, so the
+    router never builds a request from it and the user gets the reason instead of httpx's own
+    failure long after they typed the address. Trailing slashes are removed so
+    ``base + "/search"`` can never double one.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return "", ""
+    if "://" not in text:
+        return "", (
+            f"SEARXNG_URL must be a full URL including the scheme, for example "
+            f"http://127.0.0.1:8888 (got {text!r}): a bare host and port cannot be routed."
+        )
+    try:
+        parts = urlsplit(text)
+    except ValueError as exc:
+        return "", f"SEARXNG_URL is not a parseable URL: {text!r} ({exc})"
+    scheme = parts.scheme.lower()
+    if scheme not in SEARXNG_SCHEMES:
+        return "", (
+            f"SEARXNG_URL must use http or https (got scheme {parts.scheme!r} in {text!r})."
+        )
+    if not parts.netloc:
+        return "", f"SEARXNG_URL has no host: {text!r}."
+    if parts.query or parts.fragment:
+        return "", (
+            f"SEARXNG_URL must point at the instance root or a path prefix, without a query "
+            f"or fragment: {text!r}."
+        )
+    return f"{scheme}://{parts.netloc}{parts.path}".rstrip("/"), ""
 
 
 #: Every setting declared in ``plugin.yaml config_schema`` with its default. The plan
@@ -153,9 +194,11 @@ def load_settings(ctx: Any = None) -> dict[str, Any]:
         settings["camofox_url"] = os.environ.get("CAMOFOX_URL", DEFAULTS["camofox_url"])
     # ``SEARXNG_URL`` is how the CLI, the adapter messages and docker/searxng name the
     # control; the plugin setting wins when both are set, so an explicit value is never
-    # shadowed by a stale shell export.
-    if not str(settings.get("searxng_url") or "").strip():
-        settings["searxng_url"] = os.environ.get("SEARXNG_URL", "").strip()
+    # shadowed by a stale shell export. Either way the value is validated once, here, and a
+    # rejected address is dropped with its reason kept beside it (``searxng_url_error``) so
+    # every surface can explain what is wrong instead of reporting "not set" (F4).
+    searxng_raw = str(settings.get("searxng_url") or "").strip() or os.environ.get("SEARXNG_URL", "").strip()
+    settings["searxng_url"], settings["searxng_url_error"] = normalize_searxng_url(searxng_raw)
 
     settings["tier_order"] = _normalize_tier_order(settings.get("tier_order"))
     settings["keyless_enabled"] = _as_bool(settings.get("keyless_enabled"), True)

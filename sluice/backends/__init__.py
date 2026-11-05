@@ -118,12 +118,16 @@ class Backend:
         """Actionable configuration error, or ``""`` when the backend can run."""
         from ._http import missing_key_message
 
-        if self.spec.id == "searxng" and not str(self.settings.get("searxng_url") or "").strip():
-            return (
-                "SEARXNG_URL is not set. Point it at a running instance, for example "
-                "http://localhost:8080 (docker/searxng/ in this repository ships one with "
-                "search.formats: [html, json])."
-            )
+        if self.spec.id == "searxng":
+            error = str(self.settings.get("searxng_url_error") or "").strip()
+            if error:
+                return error
+            if not str(self.settings.get("searxng_url") or "").strip():
+                return (
+                    "SEARXNG_URL is not set. Point it at a running instance, for example "
+                    "http://localhost:8080 (docker/searxng/ in this repository ships one with "
+                    "search.formats: [html, json])."
+                )
         if self.spec.cheapest_tier == "local":
             return ""
         if self.key:

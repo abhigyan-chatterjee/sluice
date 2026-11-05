@@ -100,13 +100,27 @@ uniform 15 minutes is a two-constant change.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `searxng_url` | str | `""` | Base URL of a running SearXNG whose `settings.yml` has `search.formats: [html, json]`. When empty, `SEARXNG_URL` is read; when both are empty the SearXNG backend is skipped entirely (`sluice/config.py:154-159`, `sluice/backends/__init__.py:115-120`). |
-| `camofox_url` | str | `http://localhost:9377` | Not in `plugin.yaml`. Address of the Camofox REST server used by the third ladder rung. Falls back to `CAMOFOX_URL`, then the default (`sluice/config.py:61-63`, `sluice/config.py:152-153`). |
+| `searxng_url` | str | `""` | Base URL of a running SearXNG whose `settings.yml` has `search.formats: [html, json]`. When empty, `SEARXNG_URL` is read; when both are empty the SearXNG backend is skipped entirely (`sluice/config.py:45-79`, `sluice/config.py:200-201`, `sluice/backends/__init__.py:120-128`). |
+| `camofox_url` | str | `http://localhost:9377` | Not in `plugin.yaml`. Address of the Camofox REST server used by the third ladder rung. Falls back to `CAMOFOX_URL`, then the default (`sluice/config.py:104`, `sluice/config.py:193-194`). |
 
 SearXNG can be configured either way. The `searxng_url` plugin setting wins when both are
-set; `SEARXNG_URL` is the fallback, the same shape as `CAMOFOX_URL`
-(`sluice/config.py:154-159`). The CLI hint and `docker/searxng/docker-compose.yml` name the
-environment variable, and both paths reach the same backend.
+set; `SEARXNG_URL` is the fallback, the same shape as `CAMOFOX_URL`. The CLI hint and
+`docker/searxng/docker-compose.yml` name the environment variable, and both paths reach the
+same backend.
+
+The value is validated once, in `sluice/config.py`, whichever source it came from:
+
+* it must be an absolute `http` or `https` URL with a host, so `localhost:8080` is refused
+  with the reason rather than handed to httpx later;
+* trailing slashes are removed, so the adapter's `base + "/search"` never doubles one and
+  `http://127.0.0.1:8080/` and `http://127.0.0.1:8080` are the same instance;
+* a path prefix is kept (`https://example.com/searxng/` becomes `https://example.com/searxng`);
+* a query or a fragment is refused, because neither belongs on a base address.
+
+A refused address is dropped and its reason kept in the settings view as
+`searxng_url_error`. The backend is then not routed to, `hermes sluice doctor` prints the
+reason on its own line, and the SearXNG row's `missing` text carries it to the desktop pane.
+Nothing reports "not set" for an address the user did set.
 
 ```sh
 hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8080
@@ -116,6 +130,10 @@ hermes sluice doctor
 # observed (excerpt from the twelve-row table):
 # searxng      local    paid  n/a      ready
 # ddgs         keyless  paid  keyless  ready
+SEARXNG_URL=localhost:8080 .venv/bin/sluice doctor
+# observed:
+# SEARXNG_URL: SEARXNG_URL must be a full URL including the scheme, for example
+# http://127.0.0.1:8888 (got 'localhost:8080'): a bare host and port cannot be routed.
 ```
 
 ## Per-backend plan settings
@@ -192,7 +210,7 @@ field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_
 | `PLAYWRIGHT_BROWSERS_PATH` | `sluice/manage.py:121-123` | Where detection looks for the Playwright Chromium build. |
 | `SLUICE_CAMOFOX_DIR` | `sluice/manage.py:381-385` | Install directory for the npm fallback of the Camofox server. |
 | `SLUICE_LIVE_TESTS` | `tests/test_backends.py:949-962` | Test switch only, never read by the plugin at runtime. `1` opts into the live vendor calls. |
-| `SEARXNG_URL` | `sluice/config.py:154-159` | SearXNG base URL when the `searxng_url` setting is empty. An explicit setting always wins. |
+| `SEARXNG_URL` | `sluice/config.py:200-201` | SearXNG base URL when the `searxng_url` setting is empty. An explicit setting always wins. Validated like the setting: a full http(s) URL, trailing slashes stripped, and a malformed value dropped with its reason. |
 
 ## Hermes-level keys Sluice depends on
 
@@ -215,14 +233,16 @@ above).
 Three routes, all writing the same `plugins.entries.sluice.settings` map:
 
 1. Settings ▸ Plugins in Hermes, which renders `plugin.yaml`'s `config_schema`.
-2. The Desktop pane's settings page, which posts to `/api/plugins/sluice/settings` and
-   writes through `hermes_cli.plugins_settings.save_plugin_settings`
-   (`sluice/api.py:403-435`). The route refuses unknown keys and refuses every secret:
-   `{"ok": false, "error": "not editable through Sluice: EXA_API_KEY"}`.
+2. The Desktop pane's settings page, which posts to `/api/plugins/sluice/settings`. The route
+   writes each key through `PluginContext.set_config()` — the documented plugin API — which
+   is the same writer Settings ▸ Plugins uses, so the CLI, the pane and the plugin cannot
+   disagree on where a setting lives (`sluice/api.py:403-472`, `sluice/hostctx.py`). It
+   refuses unknown keys, every secret, and a value whose type does not match the manifest:
+   `{"ok": false, "error": "'cache_max_mb' should be int (got str)"}`.
 3. `hermes config set plugins.entries.sluice.settings.<key> <value>`.
 
 `POST /settings` accepts only `EDITABLE_KEYS` plus `plan_<vendor>`
-(`sluice/api.py:39-54`). The observed validation results:
+(`sluice/api.py:40-55`). The observed validation results:
 
 ```python
 from sluice.api import save_settings_payload
@@ -232,7 +252,14 @@ save_settings_payload({"EXA_API_KEY": "sk-x"}, writer=lambda v: v)
 # observed: {'ok': False, 'error': 'not editable through Sluice: EXA_API_KEY'}
 save_settings_payload({"cache_max_mb": 300, "plan_exa": "paid"}, writer=lambda v: sorted(v))
 # observed: {'ok': True, 'written': ['cache_max_mb', 'plan_exa']}
+save_settings_payload({"cache_max_mb": "300"}, writer=lambda v: sorted(v))
+# observed: {'ok': False, 'error': "'cache_max_mb' should be int (got str)"}
 ```
+
+The pane route only writes inside a Hermes process that has loaded the plugin, because that is
+where the context comes from. Without one it says so instead of failing later:
+`{"ok": false, "error": "no Hermes plugin context in this process: enable Sluice with
+'hermes plugins' and restart Hermes, then save from Settings ▸ Plugins"}`.
 
 A `hermes sluice` subcommand reads the settings fresh on every invocation, so a change is
 visible there at once. Inside a long-lived Hermes process the provider builds its settings
@@ -249,8 +276,10 @@ namespace exists only in the parent process, so the `ddgs` query runs in a `subp
 `PYTHONPATH`, so it imports `search_row` from the same copy of Sluice that started it.
 
 `SEARXNG_URL` and the `searxng_url` setting are both read; the plugin setting wins when both
-are set (`sluice/config.py:154-159`).
+are set (`sluice/config.py:200-201`).
 
 Regression coverage:
-`tests/test_backends.py::test_ddgs_search_works_under_the_hermes_plugins_loader` and
-`tests/test_config.py::test_searxng_url_env_configures_searxng_when_the_setting_is_unset`.
+`tests/test_backends.py::test_ddgs_search_works_under_the_hermes_plugins_loader`,
+`tests/test_config.py::test_searxng_url_env_configures_searxng_when_the_setting_is_unset`, and
+`tests/test_public_surface.py` (no private Hermes import; settings write through
+`ctx.set_config`).

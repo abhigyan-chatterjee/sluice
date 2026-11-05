@@ -69,6 +69,12 @@ def _key_state(backend: Any) -> str:
 def _next_command(backend: Any, settings: Mapping[str, Any]) -> str:
     """The exact next command for one unroutable backend."""
     if backend.spec.id == "searxng":
+        error = str(settings.get("searxng_url_error") or "").strip()
+        if error:
+            return (
+                f"{error} Fix it with a full http(s) URL, for example: "
+                "hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8888"
+            )
         return (
             "set SEARXNG_URL (for example http://127.0.0.1:8888), or: "
             "hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8888; "
@@ -104,6 +110,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     registry = specs()
     print(f"Sluice {__version__} — 12 backends, free first")
     print(f"tier order: {settings['tier_order']}   keyless: {'on' if settings['keyless_enabled'] else 'off'}")
+    if settings.get("searxng_url_error"):
+        print(f"SEARXNG_URL: {settings['searxng_url_error']}")
     print()
     header = f"{'backend':<12} {'tier':<8} {'plan':<5} {'key':<8} status"
     print(header)

@@ -225,17 +225,18 @@ the plugin's dependencies there (or run `doctor` with the venv's interpreter) to
 ✓ security scan — safe
 ✓ no core override — no runtime rebinds of Hermes core
 ✓ desktop surface — stays inside the plugin SDK surface
-⚠ private core imports (catalog rule 9: public surfaces only; these can break on
-any release): sluice/api.py:420
-hermes_cli.plugins_settings.save_plugin_settings. Use ctx.* / documented plugin
-APIs, or open an issue for the seam you need.
 ◆ Isolation — runs in the plugin host (plugins.isolation: host)
+  · dashboard backend API is served through the plugin host (buffered responses)
+  · ctx.register_cli_command() is skipped in the host (`hermes <command>`
+subcommands are wired into the local CLI parser)
+
 Validation passed.
 ```
 
-The single warning is the settings writer: Sluice uses Hermes' own
-`save_plugin_settings` rather than adding a second writer for `plugins.entries.sluice`. It is
-a warning, not an error, and `validate` exits 0.
+Sixteen checks pass and there is no advisory warning: Sluice imports only documented plugin
+surfaces (`hermes_cli.config`, `agent.web_search_provider`), and its settings route writes
+through `ctx.set_config()` instead of a private core module. `hermes plugins doctor` reports
+`OK: runtime discovery, manifest parsing, import, and registration passed` for the same tree.
 
 ## Hermetic CLI runs
 

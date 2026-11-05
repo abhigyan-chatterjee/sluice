@@ -54,9 +54,13 @@ class SearxngBackend(Backend):
         **kwargs: Any,
     ) -> dict[str, Any]:
         if not self.base_url:
+            error = str(self.settings.get("searxng_url_error") or "").strip()
             return failure(
-                "SEARXNG_URL is not set. Point it at a running SearXNG instance, for example "
-                "http://localhost:8080 (docker/searxng/ ships one with JSON enabled)."
+                error
+                or (
+                    "SEARXNG_URL is not set. Point it at a running SearXNG instance, for example "
+                    "http://localhost:8080 (docker/searxng/ ships one with JSON enabled)."
+                )
             )
         effective = call_timeout(kwargs, 15.0)
         params: dict[str, Any] = {"q": query, "format": "json", "pageno": 1}

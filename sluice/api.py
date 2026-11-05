@@ -22,6 +22,7 @@ from typing import Any, Callable, Mapping
 from . import __version__
 from .backends import BACKEND_MODULES, make_backend, specs
 from .config import DEFAULTS, backend_plan, configured_backends, load_settings, plugin_data_dir
+from .hostctx import host_set_config
 from .manage import (
     clear_outer_web_cache,
     detect,
@@ -400,33 +401,75 @@ def settings_payload(*, settings: Mapping[str, Any] | None = None) -> dict[str, 
     }
 
 
+#: Wire types a settings value must have, keyed by the manifest type (F5). ``ctx.set_config``
+#: stores what it is given, so the type check lives here, next to the key list it applies to.
+_SETTING_TYPES: dict[str, type] = {"bool": bool, "int": int, "str": str}
+
+
+def _setting_kind(key: str) -> str:
+    """``bool`` | ``int`` | ``str`` for one editable key, taken from the manifest defaults."""
+    default = DEFAULTS.get(key, "")
+    if isinstance(default, bool):
+        return "bool"
+    if isinstance(default, int):
+        return "int"
+    return "str"
+
+
+def _refuse_wrong_type(key: str, value: Any) -> str:
+    """``""`` when *value* matches the manifest type for *key*, else the reason (F5)."""
+    kind = _setting_kind(key)
+    if kind == "bool":
+        ok = isinstance(value, bool)
+    elif kind == "int":
+        ok = isinstance(value, int) and not isinstance(value, bool)
+    else:
+        ok = isinstance(value, str)
+    if ok:
+        return ""
+    return f"{key!r} should be {_SETTING_TYPES[kind].__name__} (got {type(value).__name__})"
+
+
 def save_settings_payload(
     values: Mapping[str, Any],
     *,
     writer: Callable[[Mapping[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
-    """Validate, then write through Hermes' own plugin-settings writer.
+    """Validate, then write each key through ``ctx.set_config``.
 
-    The writer is the only Hermes code in this module, imported at the point of use. It
-    refuses secrets, managed installs and unknown keys — Sluice adds no second writer.
+    F5: the write goes through Hermes' documented plugin API (``PluginContext.set_config``),
+    never a private core module and never a direct ``config.yaml`` edit (DESIGN.md:63-64).
+    That call keeps the managed-install and administrator-managed refusals and the
+    cross-process lock. Keys are written one at a time, so a refusal after a success leaves
+    the earlier keys written; types are checked up front so that is the only way to stop
+    halfway.
     """
     if not isinstance(values, Mapping) or not values:
         return {"ok": False, "error": "no settings supplied"}
     unknown = [key for key in values if key not in EDITABLE_KEYS and not str(key).startswith("plan_")]
     if unknown:
         return {"ok": False, "error": f"not editable through Sluice: {', '.join(sorted(unknown))}"}
+    for key, value in values.items():
+        reason = _refuse_wrong_type(str(key), value)
+        if reason:
+            return {"ok": False, "error": reason}
     if writer is None:
-        try:
-            from hermes_cli.plugins_settings import save_plugin_settings
-        except ImportError:
+        set_config = host_set_config()
+        if set_config is None:
             return {
                 "ok": False,
-                "error": "Hermes' plugin-settings writer is not importable here; start the dashboard",
+                "error": (
+                    "no Hermes plugin context in this process: enable Sluice with "
+                    "`hermes plugins` and restart Hermes, then save from Settings ▸ Plugins"
+                ),
             }
-        plugin_dir = Path(__file__).resolve().parents[1]
 
         def writer(payload: Mapping[str, Any]) -> Any:  # type: ignore[misc]
-            return save_plugin_settings("sluice", plugin_dir, payload)
+            written: list[str] = []
+            for key, value in payload.items():
+                set_config(str(key), value)
+                written.append(str(key))
+            return written
 
     try:
         written = writer(dict(values))
