@@ -13,14 +13,69 @@ JSON body with ``ok: false``, which is the plugin contract the dashboard documen
 
 from __future__ import annotations
 
+import importlib
 import logging
+import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Body
 
-from sluice import api
-
 log = logging.getLogger(__name__)
+
+#: The plugin directory this wrapper belongs to (``<plugin root>/dashboard/plugin_api.py``).
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _bind_api() -> Any:
+    """The ``sluice.api`` module this wrapper belongs to.
+
+    Hermes imports a directory plugin as ``hermes_plugins.<slug>`` with the plugin directory
+    as the package ``__path__`` (``plugins_loader._load_directory_module``,
+    ``plugin_host_child._import_plugin``) and does not put that directory on ``sys.path``. A
+    bare ``import sluice`` then either fails outright (the normal directory install) or
+    resolves to a pip-installed copy — a second module object for the same files, whose
+    ``hostctx`` is not the one ``register()`` parked (F5: every ``POST /settings`` answered
+    "no Hermes plugin context"). So bind the copy the host already loaded, and only then
+    fall back to an installed package, then to the tree next to this file.
+    """
+    entry_init = _PLUGIN_ROOT / "__init__.py"
+    candidates: list[str] = []
+    for name, module in list(sys.modules.items()):
+        if "." not in name:
+            # Hermes loads a directory plugin under its ``hermes_plugins.<slug>`` namespace;
+            # a bare top-level module named after the plugin directory is not that copy (a
+            # test runner or an ``import sluice`` from the repo directory leaves one behind).
+            continue
+        source = getattr(module, "__file__", None)
+        if not source:
+            continue
+        try:
+            if Path(source).resolve() != entry_init:
+                continue
+        except OSError:  # a stale ``__file__`` for a removed path
+            continue
+        candidates.append(name)
+    for name in candidates:
+        try:
+            return importlib.import_module(f"{name}.sluice.api")
+        except ModuleNotFoundError as exc:
+            if (exc.name or "") != f"{name}.sluice":
+                raise
+            continue  # that module is not the plugin package
+    try:
+        return importlib.import_module("sluice.api")
+    except ModuleNotFoundError as exc:
+        if (exc.name or "") != "sluice":
+            raise
+    sys.path.insert(0, str(_PLUGIN_ROOT))
+    try:
+        return importlib.import_module("sluice.api")
+    finally:
+        sys.path.remove(str(_PLUGIN_ROOT))
+
+
+api = _bind_api()
 
 router = APIRouter()
 
