@@ -130,8 +130,16 @@ def test_configured_backends_skips_missing_keys_unless_keyless():
 
 
 def test_configured_backends_respects_capability():
-    settings = load_settings()
+    """Capability filtering is tested on injected settings, not on this machine's keys."""
+    settings = {**DEFAULTS, **{env: "" for env in SECRET_ENVS}, "keyless_enabled": True}
+    searchable = set(configured_backends(settings, capability="search"))
+    extractable = set(configured_backends(settings, capability="extract"))
+    # ddgs is keyless and search-only; exa is keyless and does both.
+    assert "ddgs" in searchable and "ddgs" not in extractable
+    assert "exa" in extractable
+    # A key-only backend appears only when its key is present.
+    assert "brave" not in searchable
+    settings["BRAVE_API_KEY"] = "k"
     searchable = set(configured_backends(settings, capability="search"))
     extractable = set(configured_backends(settings, capability="extract"))
     assert "brave" in searchable and "brave" not in extractable
-    assert "exa" in extractable
