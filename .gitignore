@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+env/
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local environment and credentials
+.env
+.env.*
+
+# Sluice runtime state (SQLite store and caches live in the plugin data dir,
+# but keep strays out of the tree if one is pointed here)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# OS noise
+.DS_Store
+
+# Agent scratchpads and instructions: never part of the published tree
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.hermes/

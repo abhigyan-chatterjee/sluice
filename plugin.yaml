@@ -1,0 +1,45 @@
+name: sluice
+version: "1.0.0"
+description: "Tiered free-first web search and extraction router and backend manager for Hermes"
+author: Abhigyan Chatterjee
+license: MIT
+kind: backend
+manifest_version: 2
+requires_hermes: ">=0.22.5"
+provides_web_providers:
+  - sluice
+python_dependencies:
+  - "httpx>=0.27,<1"
+  - "trafilatura>=1.8,<3"
+  - "playwright>=1.45,<2"
+  - "ddgs>=9,<10"
+capabilities: []
+config_schema:
+  # Routing policy (PLAN.md:67-68, DESIGN.md:136-171).
+  tier_order: {type: str, default: "local,keyless,free,paid", label: "Tier order", description: "Routing order, cheapest first. Comma-separated subset of local,keyless,free,paid."}
+  keyless_enabled: {type: bool, default: true, label: "Keyless tiers", description: "Allow public anonymous tiers (ddgs, Exa/Parallel/Firecrawl/Tavily/Keenable keyless)."}
+  per_backend_budget_ms: {type: int, default: 2500, label: "Per-backend budget (ms)", description: "Wall-clock budget for one backend in one request (PLAN.md:68)."}
+  total_budget_ms: {type: int, default: 8000, label: "Total budget (ms)", description: "Wall-clock budget for one whole search (PLAN.md:68)."}
+  # Cache and circuit numbers, defaults fixed by PLAN.md:18-23.
+  search_ttl_general: {type: int, default: 900, label: "Search TTL, general (s)", description: "Search cache TTL for non-news queries (PLAN.md:18)."}
+  search_ttl_news: {type: int, default: 300, label: "Search TTL, news (s)", description: "Search cache TTL for news queries (PLAN.md:18)."}
+  extract_ttl: {type: int, default: 3600, label: "Extract TTL (s)", description: "Extract cache TTL per URL and format (PLAN.md:19)."}
+  negative_ttl: {type: int, default: 60, label: "Negative cache TTL (s)", description: "How long a failed URL stays cached as failed (PLAN.md:19)."}
+  domain_memory_ttl: {type: int, default: 86400, label: "Domain memory TTL (s)", description: "Per-domain block memory (PLAN.md:20)."}
+  circuit_failures: {type: int, default: 3, label: "Circuit failures", description: "Consecutive failures that open a backend circuit (PLAN.md:20)."}
+  circuit_open_seconds: {type: int, default: 900, label: "Circuit open (s)", description: "Open duration after consecutive failures (PLAN.md:20)."}
+  circuit_quota_seconds: {type: int, default: 3600, label: "Quota open (s)", description: "Open duration after one quota error (PLAN.md:20-21)."}
+  cache_max_mb: {type: int, default: 200, label: "Cache cap (MB)", description: "LRU eviction cap for the SQLite store (PLAN.md:22, DESIGN.md:205)."}
+  # Local backends that are detected rather than keyed.
+  searxng_url: {type: str, default: "", label: "SearXNG URL", description: "Base URL of a running SearXNG with search.formats: [html, json] (references/endpoints.md:41)."}
+  # Secrets. Hermes writes these through its credential route; the plugin never sees an input field.
+  exa_api_key: {type: secret, env: EXA_API_KEY, description: "Exa API key (keyless MCP works without one)"}
+  parallel_api_key: {type: secret, env: PARALLEL_API_KEY, description: "Parallel API key (keyless MCP works without one)"}
+  firecrawl_api_key: {type: secret, env: FIRECRAWL_API_KEY, description: "Firecrawl API key (keyless works without one)"}
+  tavily_api_key: {type: secret, env: TAVILY_API_KEY, description: "Tavily API key (keyless works without one)"}
+  keenable_api_key: {type: secret, env: KEENABLE_API_KEY, description: "Keenable API key (public endpoint works without one)"}
+  brave_api_key: {type: secret, env: BRAVE_API_KEY, description: "Brave Search API key (BRAVE_SEARCH_API_KEY is a different key)"}
+  perplexity_api_key: {type: secret, env: PERPLEXITY_API_KEY, description: "Perplexity API key"}
+  xai_api_key: {type: secret, env: XAI_API_KEY, description: "xAI API key (LLM-mediated search, fragile)"}
+  deepseek_api_key: {type: secret, env: DEEPSEEK_API_KEY, description: "DeepSeek API key (paid, billed per successful request)"}
+  tinyfish_api_key: {type: secret, env: TINYFISH_API_KEY, description: "TinyFish API key (paid)"}
