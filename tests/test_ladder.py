@@ -8,6 +8,8 @@ jar and the retry path are exercised for real rather than mocked.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -36,6 +38,7 @@ from sluice.ladder import (
 from sluice.store import NS_ROBOTS, Store
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "blocks"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 CASES = json.loads((FIXTURES / "cases.json").read_text(encoding="utf-8"))
 
 
@@ -660,18 +663,72 @@ def test_host_locale_env_injection(env, expected):
     assert host_locale(env) == expected
 
 
-def test_chromium_stage_with_c_utf8_locale_against_fixture_server(monkeypatch):
-    """F2: Playwright Chromium tier succeeds under LC_ALL=C.UTF-8 against fixture server."""
+@pytest.mark.parametrize(
+    "extra_env,expected_lc_ctype",
+    [
+        ({"LC_ALL": "C.UTF-8", "LANG": "C"}, "C.UTF-8"),
+        ({"LANG": "C", "PYTHONCOERCECLOCALE": "0"}, "C"),
+    ],
+    ids=["lc_all-c-utf8", "lang-c-without-coercion"],
+)
+def test_chromium_stage_with_c_utf8_locale_against_fixture_server(extra_env, expected_lc_ctype):
+    """F2 end to end: Chromium creates a context in a process whose locale really is C.
+
+    ``monkeypatch.setenv`` inside pytest cannot move ``locale.getlocale()``: the
+    interpreter already called ``setlocale`` at startup, so an in-process check passes on
+    a developer shell with ``en_US`` whatever the resolver does. This runs
+    ``chromium_stage`` in a child process started with the C environment and asserts the
+    child's own ``LC_CTYPE`` (and that it resolved a Playwright-valid tag) before
+    trusting the rendered page.
+    """
     from sluice.ladder import packaged_chromium_path, playwright_chromium_build
 
     if playwright_chromium_build() is None and not packaged_chromium_path():
         pytest.skip("no Chromium build for Playwright and none on PATH")
-    monkeypatch.setenv("LC_ALL", "C.UTF-8")
+
+    script = (
+        "import json, locale, sys\n"
+        "from sluice.ladder import chromium_stage, host_locale\n"
+        "outcome = chromium_stage(sys.argv[1])\n"
+        "print('SLUICE_E2E ' + json.dumps({\n"
+        "    'lc_ctype': locale.setlocale(locale.LC_CTYPE),\n"
+        "    'getlocale': list(locale.getlocale()),\n"
+        "    'host_locale': host_locale(),\n"
+        "    'stage': outcome.stage,\n"
+        "    'block_class': outcome.block_class,\n"
+        "    'content': outcome.content or '',\n"
+        "    'error': outcome.error,\n"
+        "}))\n"
+    )
     with running_server() as base:
-        outcome = chromium_stage(f"{base}/js")
-    assert outcome.stage == "chromium"
-    assert outcome.block_class == "ok"
-    assert "Loaded by script" in outcome.content
+        env = {name: value for name, value in os.environ.items()}
+        for name in ("LC_ALL", "LC_MESSAGES", "LANG", "LC_CTYPE", "LANGUAGE"):
+            env.pop(name, None)
+        env.update(extra_env)
+        env["PYTHONPATH"] = str(REPO_ROOT)
+        proc = subprocess.run(
+            [sys.executable, "-c", script, f"{base}/js"],
+            cwd=str(REPO_ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+    assert proc.returncode == 0, f"child failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    marker = [line for line in proc.stdout.splitlines() if line.startswith("SLUICE_E2E ")]
+    assert marker, f"no result marker\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    payload = json.loads(marker[-1][len("SLUICE_E2E ") :])
+    if payload["lc_ctype"] != expected_lc_ctype:
+        # The premise (a real C.UTF-8 process) is unavailable on this platform; the
+        # resolver and Chromium checks below would not mean anything here.
+        pytest.skip(
+            f"platform cannot enter {expected_lc_ctype} (child reports {payload['lc_ctype']!r})"
+        )
+    assert payload["host_locale"] == "en-US", payload
+    assert payload["stage"] == "chromium", payload
+    assert payload["block_class"] == "ok", payload.get("error")
+    assert "Loaded by script" in payload["content"]
 
 
 def test_retry_after_cap_is_below_the_router_budget():
