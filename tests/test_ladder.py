@@ -596,8 +596,44 @@ def test_host_locale_never_returns_a_tag_playwright_rejects(monkeypatch, reporte
     """F2: ``locale='C'`` makes ``Emulation.setLocaleOverride`` fail; normalize it."""
     import locale as locale_module
 
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.delenv("LC_MESSAGES", raising=False)
+    monkeypatch.delenv("LANG", raising=False)
     monkeypatch.setattr(locale_module, "getlocale", lambda: reported)
     assert host_locale() == expected
+
+
+@pytest.mark.parametrize(
+    "env,expected",
+    [
+        ({"LANG": "C"}, "en-US"),
+        ({"LC_ALL": "C.UTF-8"}, "en-US"),
+        ({"LANG": "POSIX"}, "en-US"),
+        ({"LANG": "de_DE.UTF-8"}, "de-DE"),
+        ({"LANG": "de_DE.UTF-8@euro"}, "de-DE"),
+        ({"LANG": "de_DE@euro"}, "de-DE"),
+        ({"LANG": "fr_FR"}, "fr-FR"),
+        ({"LANG": "zh_CN.GBK"}, "zh-CN"),
+        ({}, "en-US"),
+    ],
+)
+def test_host_locale_env_injection(env, expected):
+    """F2: env-injected host_locale resolves valid BCP-47 tags or falls back to en-US."""
+    assert host_locale(env) == expected
+
+
+def test_chromium_stage_with_c_utf8_locale_against_fixture_server(monkeypatch):
+    """F2: Playwright Chromium tier succeeds under LC_ALL=C.UTF-8 against fixture server."""
+    from sluice.ladder import packaged_chromium_path, playwright_chromium_build
+
+    if playwright_chromium_build() is None and not packaged_chromium_path():
+        pytest.skip("no Chromium build for Playwright and none on PATH")
+    monkeypatch.setenv("LC_ALL", "C.UTF-8")
+    with running_server() as base:
+        outcome = chromium_stage(f"{base}/js")
+    assert outcome.stage == "chromium"
+    assert outcome.block_class == "ok"
+    assert "Loaded by script" in outcome.content
 
 
 def test_retry_after_cap_is_below_the_router_budget():

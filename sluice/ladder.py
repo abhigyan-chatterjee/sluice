@@ -1068,27 +1068,52 @@ FALLBACK_LOCALE = "en-US"
 
 
 def normalize_locale(tag: str | None) -> str:
-    """Return one Playwright-acceptable tag, or ``en-US`` for the POSIX pseudo-locales.
+    """Return one Playwright-acceptable tag, or ``en-US`` for POSIX pseudo-locales.
 
-    Accepts a primary language subtag of 2-3 ASCII letters (``en``, ``de``, ``fil``) and
-    keeps the rest of the tag as reported; ``C``, ``POSIX``, ``C.UTF-8`` and anything else
-    whose primary subtag is not a language become ``en-US``.
+    Normalizes ``ll_CC.encoding@modifier`` to ``ll-CC`` or ``ll``; ``C``, ``POSIX``,
+    ``C.UTF-8``, empty, or malformed tags fall back to ``en-US``.
     """
-    raw = str(tag or "").strip().replace("_", "-")
-    primary = raw.split("-", 1)[0]
+    raw = str(tag or "").strip()
+    if not raw:
+        return FALLBACK_LOCALE
+    base = raw.split("@", 1)[0].split(".", 1)[0]
+    base = base.replace("_", "-")
+    parts = base.split("-")
+    primary = parts[0]
     if len(primary) < 2 or len(primary) > 3 or not primary.isascii() or not primary.isalpha():
         return FALLBACK_LOCALE
-    return raw
+    if len(parts) > 1:
+        region = parts[1]
+        if (len(region) == 2 and region.isascii() and region.isalpha()) or (len(region) == 3 and region.isdigit()):
+            return f"{primary.lower()}-{region.upper() if region.isalpha() else region}"
+    return primary.lower()
 
 
-def host_locale() -> str:
+def host_locale(env: Mapping[str, str] | None = None) -> str:
+    """Resolve the host's preferred locale, returning a Playwright-acceptable tag.
+
+    If *env* is provided, resolves purely from *env* (checking ``LC_ALL``,
+    ``LC_MESSAGES``, ``LANG`` in order). When omitted, queries ``locale.getlocale()``
+    first, falls back to the process environment if unset, and normalizes the tag.
+    """
+    if env is not None:
+        val = env.get("LC_ALL") or env.get("LC_MESSAGES") or env.get("LANG")
+        return normalize_locale(val)
+
     import locale
 
     try:
         language, _encoding = locale.getlocale()
     except Exception:  # noqa: BLE001
         language = None
-    return normalize_locale(language)
+
+    if language is not None:
+        return normalize_locale(language)
+
+    import os
+
+    env_val = os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG")
+    return normalize_locale(env_val)
 
 
 def host_timezone() -> str:
