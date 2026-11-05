@@ -309,6 +309,77 @@ def test_a_non_printable_character_is_refused_before_it_reaches_httpx():
         assert "non-printable" in error, (raw, error)
 
 
+def test_a_host_httpx_cannot_encode_is_refused_with_its_reason(monkeypatch):
+    """``parts.hostname`` is not an IDNA check.
+
+    A zero-width space, an NBSP, a non-breaking hyphen, an emoji or a combining mark all
+    pass ``urlsplit`` and only fail inside httpx, whose ``InvalidURL`` is not an
+    ``httpx.HTTPError`` and so escapes the adapter boundary as an exception instead of a
+    failure dict.
+    """
+    from sluice.backends import make_backend
+
+    cases = (
+        "http://ho\u200bst:8888",
+        "http://ho\u00a0st:8888",
+        "http://ho\u2011st:8888",
+        "http://\U0001F600.example:8888",
+        "http://mu\u0308nchen.example:8888",
+    )
+    for raw in cases:
+        monkeypatch.setenv("SEARXNG_URL", raw)
+        settings = load_settings(FakeContext({"searxng_url": ""}))
+        assert settings["searxng_url"] == "", raw
+        assert "SEARXNG_URL" in settings["searxng_url_error"], raw
+        assert "IDNA" in settings["searxng_url_error"], (raw, settings["searxng_url_error"])
+        # The adapter contract: a refused address is a dict, never an exception.
+        result = make_backend("searxng", settings).search("q", timeout=0.3)
+        assert isinstance(result, dict), raw
+        assert result["ok"] is False, raw
+        assert "SEARXNG_URL" in result["error"], (raw, result["error"])
+
+
+def test_an_overlong_url_is_refused_without_echoing_it():
+    """httpx refuses a URL past 64 KiB with ``InvalidURL: URL too long``; refuse it first.
+
+    The reason must stay short: copying a megabyte value into ``searxng_url_error`` would
+    put it in front of the user through doctor, the pane and the CLI.
+    """
+    from sluice.backends import make_backend
+
+    raw = "http://127.0.0.1:1/" + "a" * (1024 * 1024)
+    url, error = normalize_searxng_url(raw)
+    assert url == ""
+    assert "SEARXNG_URL" in error
+    assert "2048" in error, error
+    assert len(error) < 512, len(error)
+    result = make_backend("searxng", {"searxng_url": url, "searxng_url_error": error}).search(
+        "q", timeout=0.3
+    )
+    assert isinstance(result, dict)
+    assert result["ok"] is False
+    assert "SEARXNG_URL" in result["error"]
+
+
+def test_a_lone_surrogate_is_refused_before_it_reaches_httpx():
+    """``os.environ`` decodes undecodable bytes with surrogateescape; httpx cannot encode one.
+
+    ``httpx.URL`` raises ``UnicodeEncodeError`` for a surrogate in the path, not
+    ``InvalidURL``, so the validator must catch both to keep its promise.
+    """
+    url, error = normalize_searxng_url("http://host:8888/\ud800")
+    assert url == ""
+    assert "SEARXNG_URL" in error, error
+
+
+def test_a_valid_idna_host_is_still_accepted():
+    """The IDNA gate must not refuse a hostname httpx can encode."""
+    for raw in ("http://münchen.example:8888", "http://127.0.0.1:8888"):
+        url, error = normalize_searxng_url(raw)
+        assert error == "", (raw, error)
+        assert url == raw, (raw, url)
+
+
 def test_every_validator_accepted_address_survives_the_http_boundary():
     """No address the validator accepts may raise out of ``SearxngBackend.search()``.
 
@@ -334,6 +405,14 @@ def test_every_validator_accepted_address_survives_the_http_boundary():
         "http://:8888",
         "http://host\x00:8888",
         "http://host:8888/\x7f",
+        # F4 tail: hosts urlsplit accepts and httpx's IDNA encoder refuses.
+        "http://ho\u200bst:8888",
+        "http://ho\u00a0st:8888",
+        "http://ho\u2011st:8888",
+        "http://\U0001F600.example:8888",
+        "http://mu\u0308nchen.example:8888",
+        # F4 tail: past httpx's 64 KiB URL cap.
+        "http://127.0.0.1:1/" + "a" * (1024 * 1024),
     )
     accepted = 0
     for raw in candidates:

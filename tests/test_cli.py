@@ -224,6 +224,22 @@ def test_test_command_names_the_missing_key_and_next_command(isolated, capsys, m
     assert "Settings" in captured.err
 
 
+def test_test_command_prints_a_refused_searxng_reason_without_a_traceback(isolated, capsys):
+    """A value httpx's IDNA encoder refuses used to escape as a raw traceback."""
+    from sluice.config import normalize_searxng_url
+
+    url, error = normalize_searxng_url("http://ho\u200bst:8888")
+    isolated["settings"]["searxng_url"] = url
+    isolated["settings"]["searxng_url_error"] = error
+    assert _run(["test", "--backend", "searxng", "q"]) == 1
+    captured = capsys.readouterr()
+    assert "cannot run" in captured.err
+    assert "SEARXNG_URL" in captured.err
+    assert "IDNA" in captured.err
+    assert "next:" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_unknown_backend_exits_two(isolated, capsys):
     assert _run(["test", "--backend", "nope", "q"]) == 2
     assert "unknown backend" in capsys.readouterr().err

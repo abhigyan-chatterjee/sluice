@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 from urllib.parse import urlsplit
 
+import httpx
+
 from .backends import BACKEND_MODULES
 
 #: Vendors with a published free allowance default to the free tier; the rest to paid
@@ -44,6 +46,17 @@ def plan_settings() -> dict[str, str]:
 #: Schemes a SearXNG instance can be reached on. Anything else is refused before a request.
 SEARXNG_SCHEMES: tuple[str, ...] = ("http", "https")
 
+#: A SearXNG instance address is a scheme, a host, an optional port and at most a short path
+#: prefix. httpx refuses a request URL past its 64 KiB cap with ``InvalidURL``, which is not
+#: an ``httpx.HTTPError`` and would escape the adapter boundary; the bound also leaves room
+#: for the query the adapter appends.
+MAX_SEARXNG_URL_LENGTH = 2048
+
+
+def _clip(text: str, limit: int = 120) -> str:
+    """Shorten a value echoed in a refusal, so a hostile length cannot flood the reason."""
+    return text if len(text) <= limit else f"{text[:limit]}..."
+
 
 def normalize_searxng_url(raw: Any) -> tuple[str, str]:
     """Return ``(base_url, error)`` for one SearXNG instance address.
@@ -58,10 +71,21 @@ def normalize_searxng_url(raw: Any) -> tuple[str, str]:
     and a port past 65535 pass the split and only raise when ``parts.port`` is touched.
     Left unread they reach ``httpx``, whose ``InvalidURL`` is not an ``httpx.HTTPError`` and
     so escapes the adapter boundary instead of being refused with a reason (F4 residual).
+
+    The address is then handed to ``httpx.URL`` itself. ``parts.hostname`` only proves the
+    host is non-empty; httpx IDNA-encodes it and refuses what it cannot encode (a zero-width
+    space, an NBSP, a non-breaking hyphen, an emoji, a combining mark) with the same
+    ``InvalidURL``. Asking httpx here keeps the validator and the request in agreement.
     """
     text = str(raw or "").strip()
     if not text:
         return "", ""
+    if len(text) > MAX_SEARXNG_URL_LENGTH:
+        return "", (
+            f"SEARXNG_URL is {len(text)} characters long; the limit is "
+            f"{MAX_SEARXNG_URL_LENGTH}. A SearXNG address is a scheme, a host, an optional "
+            f"port and at most a short path prefix (got {_clip(text)!r})."
+        )
     if "://" not in text:
         return "", (
             f"SEARXNG_URL must be a full URL including the scheme, for example "
@@ -92,7 +116,15 @@ def normalize_searxng_url(raw: Any) -> tuple[str, str]:
             f"SEARXNG_URL must point at the instance root or a path prefix, without a query "
             f"or fragment: {text!r}."
         )
-    return f"{scheme}://{parts.netloc}{parts.path}".rstrip("/"), ""
+    base = f"{scheme}://{parts.netloc}{parts.path}".rstrip("/")
+    try:
+        # The exact string ``SearxngBackend.search`` builds, not a reconstruction of it.
+        httpx.URL(f"{base}/search")
+    except (httpx.InvalidURL, UnicodeError) as exc:
+        return "", (
+            f"SEARXNG_URL is not an address httpx can request ({exc}): {_clip(text)!r}."
+        )
+    return base, ""
 
 
 #: Every setting declared in ``plugin.yaml config_schema`` with its default. The plan

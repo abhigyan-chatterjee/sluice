@@ -27,6 +27,7 @@ from .config import (
     configured_backends,
     load_settings,
     normalize_searxng_url,
+    plan_settings,
     plugin_data_dir,
 )
 from .hostctx import host_set_config
@@ -456,7 +457,12 @@ def save_settings_payload(
     """
     if not isinstance(values, Mapping) or not values:
         return {"ok": False, "error": "no settings supplied"}
-    unknown = [key for key in values if key not in EDITABLE_KEYS and not str(key).startswith("plan_")]
+    plan_keys = plan_settings()
+    unknown = [
+        key
+        for key in values
+        if str(key) not in EDITABLE_KEYS and str(key) not in plan_keys
+    ]
     if unknown:
         return {"ok": False, "error": f"not editable through Sluice: {', '.join(sorted(unknown))}"}
     for key, value in values.items():

@@ -102,6 +102,9 @@ The value is validated once, in `sluice/config.py`, whichever source it came fro
 
 * it must be an absolute `http` or `https` URL with a host, so `localhost:8080` is refused
   with the reason rather than handed to httpx later;
+* the host must be one httpx can encode (IDNA) and the whole address at most 2048 characters,
+  so a zero-width space, an emoji or a megabyte-long path is refused here with the same named
+  reason instead of raising `httpx.InvalidURL` out of the adapter boundary;
 * trailing slashes are removed, so the adapter's `base + "/search"` never doubles one and
   `http://127.0.0.1:8080/` and `http://127.0.0.1:8080` are the same instance;
 * a path prefix is kept (`https://example.com/searxng/` becomes `https://example.com/searxng`);

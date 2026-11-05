@@ -335,6 +335,39 @@ def test_save_settings_writes_through_the_injected_writer(env):
     assert sorted(result["written"]) == ["keyless_enabled", "plan_brave"]
 
 
+def test_save_settings_refuses_a_plan_key_that_is_not_declared(env):
+    """Only the ``plan_settings()`` keys are exempt from the editable-key allowlist.
+
+    A ``plan_`` prefix used to be enough, so ``plan_nonsense`` was written into
+    ``plugins.entries.sluice.settings`` where nothing reads it.
+    """
+    written: list[dict] = []
+    result = api.save_settings_payload(
+        {"plan_nonsense": "free"},
+        writer=lambda values: written.append(dict(values)) or list(values),
+    )
+    assert result["ok"] is False
+    assert "plan_nonsense" in result["error"]
+    assert written == [], "an undeclared plan key must not reach the writer"
+
+
+def test_save_settings_writes_every_declared_plan_key(env):
+    from sluice.config import plan_settings
+
+    keys = list(plan_settings())
+    assert keys, "the manifest declares at least one plan_<vendor> key"
+    for key in keys:
+        written: list[dict] = []
+
+        def writer(values, seen=written):
+            seen.append(dict(values))
+            return list(values)
+
+        result = api.save_settings_payload({key: "paid"}, writer=writer)
+        assert result["ok"] is True, (key, result)
+        assert written == [{key: "paid"}], key
+
+
 def test_save_settings_surfaces_a_refusal(env):
     def writer(values):
         raise PermissionError("Plugin settings cannot be changed in a managed install")
@@ -378,6 +411,18 @@ def test_save_settings_still_writes_an_empty_or_usable_searxng_url(env):
         result = api.save_settings_payload({"searxng_url": value}, writer=writer)
         assert result["ok"] is True, (value, result)
         assert written == [{"searxng_url": value}]
+
+
+def test_test_payload_answers_a_refused_searxng_address_instead_of_raising(env):
+    """``api.test_payload`` backs ``hermes sluice test``; a refused address is a payload."""
+    from sluice.config import normalize_searxng_url
+
+    for raw in ("http://ho\u200bst:8888", "http://127.0.0.1:1/" + "a" * (1024 * 1024)):
+        url, error = normalize_searxng_url(raw)
+        settings = {**env["settings"], "searxng_url": url, "searxng_url_error": error}
+        payload = api.test_payload("q", backend_id="searxng", settings=settings, state=env["store"])
+        assert payload["ok"] is False, raw
+        assert "SEARXNG_URL" in payload["error"], (raw, payload["error"])
 
 
 def test_setup_dry_run_lists_three_routes(env, monkeypatch):
