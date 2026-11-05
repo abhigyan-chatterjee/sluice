@@ -19,7 +19,7 @@ Hermes tool layer
               (search path)      (per-URL path)
                     │                │
         ┌───────────┴───┐            ▼
-        ▼               ▼        Fetch Ladder          sluice/ladder.py:683
+        ▼               ▼        Fetch Ladder          sluice/ladder.py:734
   tier candidates   cache     http → chromium → camofox
         │
         ▼
@@ -148,28 +148,29 @@ exist for `hermes sluice test --backend <id>` and for probes (`sluice/router.py:
 1. `Router.extract` loops the URLs and calls `_extract_one` per URL (`450-453`).
 2. Cache lookup in `extract` and `extract:negative`, keyed by URL and format
    (`455-463`). A negative hit returns the cached failure.
-3. `sluice.ladder.fetch` (`683-824`): reject non-HTTP schemes, then check policy. Robots is
+3. `sluice.ladder.fetch` (`734-876`): reject non-HTTP schemes, then check policy. Robots is
    fetched once per origin and cached 24 h (`289-328`); a disallow returns
    `blocked_by_policy` with the rule quoted, and no page request is made.
 4. The start rung comes from `domain_memory`: the stage that worked last time, or Chromium
-   when the domain previously challenged (`838-850`).
-5. Stage 1, `http` (`400-463`): `httpx` with `User-Agent: Sluice/1.0`, no browser-only
+   when the domain previously challenged (`889-902`).
+5. Stage 1, `http` (`400-464`): `httpx` with `User-Agent: Sluice/1.0`, no browser-only
    headers, trafilatura for text, a clean-text fallback when trafilatura refuses. A 429
    honours `Retry-After` and retries once if the wait is at most 5 s; a 5xx retries once.
-6. Stage 2, `chromium` (`466-569`): the full Chromium build through Playwright, launched
+6. Stage 2, `chromium` (`515-621`): the full Chromium build through Playwright, launched
    `headless=False` with `--headless=new` so it is the real browser and not the headless
    shell, `--disable-blink-features=AutomationControlled`, host locale and timezone, cookies
-   carried from stage 1, 15 s cap.
-7. Stage 3, `camofox` (`572-677`): only when `GET /health` reports `ok`, opens a tab, reads
+   carried from stage 1, 15 s cap. Playwright's managed build is used when present; when it
+   is absent, a Chromium/Chrome already on `PATH` is passed as `executable_path`.
+7. Stage 3, `camofox` (`623-732`): only when `GET /health` reports `ok`, opens a tab, reads
    the snapshot text, closes the tab.
 8. After every response with headers, `X-Robots-Tag` and `Content-Signal` are checked
-   (`349-364`, `758-774`). A refusal stops the ladder as `policy_blocked` even if the body
+   (`349-364`, `809-825`). A refusal stops the ladder as `policy_blocked` even if the body
    was readable.
-9. Stop rules (`46-48`, `796-799`): `forbidden`, `auth_required`, `payment_required`,
+9. Stop rules (`45-47`, `847-850`): `forbidden`, `auth_required`, `payment_required`,
    `policy_blocked` and `error` stop; `rate_limited` stops after its single retry;
    `challenge` and `js_required` climb. A CAPTCHA is never solved and the identity is never
    changed.
-10. The item is assembled by `_item` (`867-899`) with one provenance line at the top of
+10. The item is assembled by `_item` (`918-950`) with one provenance line at the top of
     `content`, `[sluice: stage=<stage> status=<class>]`, because Hermes trims extract items
     down to `url`, `title`, `content`, `error` and `blocked_by_policy`
     (`tools/web_tools_truncate._trim_results`). Domain memory and the positive or negative
@@ -241,7 +242,7 @@ The two `PLAN.md` vs `DESIGN.md` conflicts are resolved in this module and in th
 | `SluiceWebSearchProvider` | `sluice/provider.py:104` | The `WebSearchProvider` subclass. `supports_search`/`supports_extract` both true; `is_available` true with any key or a SearXNG URL; `is_keyless_available` true while the keyless tier is enabled; `get_setup_schema` advertises no env prompt because keys live in Settings. |
 | `ctx.get_config` | `sluice/config.py:131-140` | Reads each setting with its manifest default as the fallback, so an unset key keeps the default instead of becoming `None`. |
 | `agent.web_search_provider.get_provider_env` | `sluice/config.py:111`, `sluice/provider.py:90` | Config-aware, profile-scope-aware credential lookup. Wrapped so an unscoped secret or a broken config read is treated as absent instead of raising. |
-| `tools/web_tools_truncate._trim_results` | worked around at `sluice/ladder.py:16-18`, `880-899` | The wrapper strips every extract key except `url`, `title`, `content`, `error`, `blocked_by_policy`. Sluice puts the block class and final stage in one header line at the top of `content`; the full chain stays in `stages` for the pane and the API. Search rows are not trimmed, so `backend` and `tier` survive as extra row keys. |
+| `tools/web_tools_truncate._trim_results` | worked around at `sluice/ladder.py:16-18`, `918-950` | The wrapper strips every extract key except `url`, `title`, `content`, `error`, `blocked_by_policy`. Sluice puts the block class and final stage in one header line at the top of `content`; the full chain stays in `stages` for the pane and the API. Search rows are not trimmed, so `backend` and `tier` survive as extra row keys. |
 | `tools/web_result_cache` | `sluice/manage.py:331-356`, `sluice/cli.py:304` | Hermes' outer cache (20 minutes by default). `setup --apply` turns it off so one tier-aware cache governs; `cache clear` clears `cache/web` as well as the SQLite cache. |
 | `dashboard/manifest.json` | whole file | Declares `api: plugin_api.py` (Hermes rejects an API path outside `dashboard/`) and `entry: dist/index.js` for the loader. `tab.hidden: true`: the pane is the UI. |
 | `dashboard/plugin_api.py` | `28-107` | Mounts at `/api/plugins/sluice/`. Routes: `GET /status`, `POST /probe`, `POST /test`, `POST /install`, `GET /jobs/{id}`, `POST /cache/clear`, plus `GET/POST /settings` and `POST /setup` for the pane. Every handler is wrapped in `_safe`, so a failure is a JSON body, not a 500. |
@@ -313,10 +314,13 @@ Out of scope for v1, recorded in `DESIGN.md:312-319` and `PLAN.md`:
 - `SUBMISSION.md` and the 90-second demo recording (`PLAN.md` T14). These are external
   submission artifacts, not runtime code; `demo/script.md` is the shooting script.
 
-Known defects in 1.0.0, found while verifying these docs:
+## Directory-plugin namespace
 
-- `ddgs` fails under the directory-plugin loader (`ModuleNotFoundError: No module named
-  'hermes_plugins'` from the spawned child). It works from the standalone console script and
-  a checkout-local Python.
-- `SEARXNG_URL` is printed by messages but not read; the `searxng_url` setting is the real
-  control.
+Hermes imports this repository as `hermes_plugins.sluice`, and that package name exists only
+in the parent process. The `ddgs` rung therefore runs its query in a `subprocess` `-c` script
+(JSON request on stdin, one JSON object on stdout) with the repository root first on
+`PYTHONPATH`; a `multiprocessing` spawn would fail in the child trying to import
+`hermes_plugins` (`sluice/backends/ddgs.py:53-166`).
+
+`SEARXNG_URL` is read as a fallback for the `searxng_url` setting; an explicit plugin setting
+wins (`sluice/config.py:154-159`).

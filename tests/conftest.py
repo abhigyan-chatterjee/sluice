@@ -24,6 +24,9 @@ def hermetic_hermes_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
     monkeypatch.setenv("HERMES_HOME", str(home))
     monkeypatch.setenv("SLUICE_DATA_DIR", str(data))
     monkeypatch.delenv("CAMOFOX_URL", raising=False)
+    # F4: both URL overrides read the environment, so a host export would otherwise decide
+    # which backend is "configured" inside a hermetic test.
+    monkeypatch.delenv("SEARXNG_URL", raising=False)
 
     # Hermes' own resolver wins over SLUICE_DATA_DIR when Hermes is importable, so patch the
     # function every caller ends up in, not just the environment. Read the variable at call

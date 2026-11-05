@@ -463,6 +463,55 @@ def _http_attempt(http: Any, url: str, *, timeout: float) -> StageOutcome:
     return outcome
 
 
+def playwright_chromium_build() -> str | None:
+    """The managed Chromium build Playwright downloaded, or ``None``.
+
+    ``manage.py`` owns the probe because ``hermes sluice doctor`` reports the same fact;
+    the import is local so ``ladder`` stays importable without the manager's dependencies.
+    """
+    from .manage import _playwright_chromium_dir
+
+    found = _playwright_chromium_dir()
+    return str(found) if found is not None else None
+
+
+def packaged_chromium_path() -> str:
+    """The first Chromium/Chrome binary on ``PATH``, or ``""``.
+
+    ``manage.CHROMIUM_BINARIES`` fixes the order (Chrome before Chromium); the ladder uses
+    the same list so doctor's "packaged chromium" line and the chromium rung agree.
+    """
+    import shutil
+
+    from .manage import CHROMIUM_BINARIES
+
+    for binary in CHROMIUM_BINARIES:
+        found = shutil.which(binary)
+        if found:
+            return found
+    return ""
+
+
+def _launch_chromium(chromium: Any, args: Sequence[str], executable_path: str | None) -> Any:
+    """Launch the full browser, pinned to *executable_path* when Playwright has no build."""
+    if executable_path:
+        return chromium.launch(headless=False, args=list(args), executable_path=executable_path)
+    return chromium.launch(headless=False, args=list(args))
+
+
+def _chromium_skipped(url: str, exc: BaseException) -> StageOutcome:
+    return StageOutcome(
+        stage="chromium",
+        block_class="error",
+        url=url,
+        skipped=True,
+        reason=(
+            f"Chromium is not installed for Playwright ({exc}); "
+            "run `hermes sluice install playwright`"
+        ),
+    )
+
+
 def chromium_stage(
     url: str,
     *,
@@ -501,19 +550,21 @@ def chromium_stage(
     ]
     try:
         with sync_playwright() as runtime:
+            # Playwright's managed build wins; only when it is missing does a Chromium on
+            # PATH stand in. If launch still fails (an incomplete managed dir, an
+            # incompatible packaged build), the rung is skipped with the real error.
+            executable_path = None if playwright_chromium_build() is not None else packaged_chromium_path()
+            executable_path = executable_path or None
             try:
-                browser = runtime.chromium.launch(headless=False, args=args)
-            except Exception as exc:  # noqa: BLE001 - missing browser binary
-                return StageOutcome(
-                    stage="chromium",
-                    block_class="error",
-                    url=url,
-                    skipped=True,
-                    reason=(
-                        "Chromium is not installed for Playwright "
-                        f"({exc}); run `hermes sluice install playwright`"
-                    ),
-                )
+                browser = _launch_chromium(runtime.chromium, args, executable_path)
+            except Exception as first_exc:  # noqa: BLE001 - missing browser binary
+                fallback = packaged_chromium_path() if executable_path is None else ""
+                if not fallback:
+                    return _chromium_skipped(url, first_exc)
+                try:
+                    browser = _launch_chromium(runtime.chromium, args, fallback)
+                except Exception as exc:  # noqa: BLE001
+                    return _chromium_skipped(url, exc)
             try:
                 context = browser.new_context(
                     locale=browser_locale,
@@ -1010,6 +1061,26 @@ def _first_str(payload: Mapping[str, Any], *keys: str) -> str:
     return ""
 
 
+#: Playwright passes the tag to ``Emulation.setLocaleOverride``, which rejects ``C`` and
+#: ``POSIX``. Both are what ``locale.getlocale()`` reports under ``LANG=C``, ``LC_ALL=C``,
+#: ``POSIX`` or ``env -i`` — common in containers, cron and CI.
+FALLBACK_LOCALE = "en-US"
+
+
+def normalize_locale(tag: str | None) -> str:
+    """Return one Playwright-acceptable tag, or ``en-US`` for the POSIX pseudo-locales.
+
+    Accepts a primary language subtag of 2-3 ASCII letters (``en``, ``de``, ``fil``) and
+    keeps the rest of the tag as reported; ``C``, ``POSIX``, ``C.UTF-8`` and anything else
+    whose primary subtag is not a language become ``en-US``.
+    """
+    raw = str(tag or "").strip().replace("_", "-")
+    primary = raw.split("-", 1)[0]
+    if len(primary) < 2 or len(primary) > 3 or not primary.isascii() or not primary.isalpha():
+        return FALLBACK_LOCALE
+    return raw
+
+
 def host_locale() -> str:
     import locale
 
@@ -1017,7 +1088,7 @@ def host_locale() -> str:
         language, _encoding = locale.getlocale()
     except Exception:  # noqa: BLE001
         language = None
-    return (language or "en-US").replace("_", "-")
+    return normalize_locale(language)
 
 
 def host_timezone() -> str:

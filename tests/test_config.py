@@ -186,3 +186,24 @@ def test_missing_values_keep_the_manifest_defaults():
     settings = load_settings(FakeContext({}))
     for key, value in DEFAULTS.items():
         assert settings[key] == value, key
+
+
+# ── SEARXNG_URL: the environment variable messages already name (F4) ────────────
+
+
+def test_searxng_url_env_configures_searxng_when_the_setting_is_unset(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", "http://127.0.0.1:8888")
+    settings = load_settings(FakeContext({"searxng_url": ""}))
+    assert settings["searxng_url"] == "http://127.0.0.1:8888"
+    assert "searxng" in configured_backends(settings)
+
+
+def test_searxng_url_env_reaches_the_no_context_path_used_by_the_cli(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", " http://127.0.0.1:8888 ")
+    assert load_settings()["searxng_url"] == "http://127.0.0.1:8888"
+
+
+def test_an_explicit_searxng_setting_overrides_the_env(monkeypatch):
+    monkeypatch.setenv("SEARXNG_URL", "http://env.example:8080")
+    settings = load_settings(FakeContext({"searxng_url": "http://plugin.example:8080"}))
+    assert settings["searxng_url"] == "http://plugin.example:8080"

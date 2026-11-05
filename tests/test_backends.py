@@ -8,9 +8,14 @@ unless ``SLUICE_LIVE_TESTS=1`` — the plan's "one live call per mode behind an 
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
 import os
+import sys
 import time
+import types
+from pathlib import Path
 
 import httpx
 import pytest
@@ -218,6 +223,20 @@ def test_searxng_without_url_is_a_configuration_error(http):
     assert http.requests == []
 
 
+def test_searxng_url_env_configures_the_backend(http, monkeypatch):
+    """F4: the variable the messages name is a real control, like ``CAMOFOX_URL``."""
+    from sluice.config import load_settings
+
+    monkeypatch.setenv("SEARXNG_URL", "http://env.example:8888")
+    http.respond(lambda request: json_response({"results": []}))
+
+    result = make_backend("searxng", load_settings()).search("q")
+
+    assert result["ok"] is True, result["error"]
+    assert http.last.url.host == "env.example"
+    assert http.last.url.path == "/search"
+
+
 # ── ddgs ──────────────────────────────────────────────────────────────────────────
 
 
@@ -249,28 +268,94 @@ def test_ddgs_freshness_table(freshness, expected):
         assert FRESHNESS_MAP[freshness] == expected
 
 
-def test_ddgs_child_process_is_killed_at_the_wall_clock():
-    """A child that never answers must be terminated, not waited on."""
-    from sluice.backends.ddgs import run_in_child
+def test_ddgs_child_process_is_killed_at_the_wall_clock(monkeypatch):
+    """A child that never answers must be killed, not waited on."""
+    from sluice.backends import ddgs as ddgs_module
 
+    monkeypatch.setattr(ddgs_module, "_CHILD_SOURCE", "import time; time.sleep(10)")
     started = time.monotonic()
-    status, payload = run_in_child(_sleepy_worker, (10.0,), timeout=0.4)
+    status, payload = ddgs_module.run_in_child("q", 1, "", timeout=0.4)
     elapsed = time.monotonic() - started
     assert status == "timeout"
     assert payload is None
     assert elapsed < 5.0
 
 
-def _sleepy_worker(connection, seconds: float) -> None:  # pragma: no cover - child process
-    time.sleep(seconds)
-    connection.send(("ok", []))
+def test_ddgs_child_env_prepends_the_repo_root_to_pythonpath(monkeypatch):
+    """The child imports ``sluice.backends._http`` from this checkout, not a stale install."""
+    from sluice.backends import ddgs as ddgs_module
+
+    repo_root = str(Path(__file__).resolve().parents[1])
+    monkeypatch.setenv("PYTHONPATH", "/somewhere/else")
+    entries = ddgs_module._child_env()["PYTHONPATH"].split(os.pathsep)
+    assert entries[:2] == [repo_root, "/somewhere/else"]
+
+
+def test_ddgs_search_works_under_the_hermes_plugins_loader(monkeypatch):
+    """F1: the child must never have to import the loader's synthetic ``hermes_plugins``."""
+    module = _load_ddgs_as_hermes_plugin()
+    monkeypatch.setattr(module, "_CHILD_SOURCE", _CANNED_DDGS_CHILD)
+
+    result = module.DdgsBackend().search("rust", limit=2, freshness="week")
+
+    assert result["ok"] is True, result.get("error")
+    assert result["results"] == [
+        {
+            "url": "https://example.test/row",
+            "title": "rust",
+            "description": "w",
+            "position": 1,
+        }
+    ]
+
+
+def _load_ddgs_as_hermes_plugin():
+    """Import ``ddgs.py`` as ``hermes_plugins.sluice.sluice.backends.ddgs``.
+
+    Mirrors ``hermes_cli/plugins_loader.py:_load_directory_module``: the plugin directory is
+    the package path of ``hermes_plugins.sluice``, and ``hermes_plugins`` exists only as an
+    empty namespace package in this process' ``sys.modules`` — exactly the name a spawned
+    child could not import before F1 was fixed.
+    """
+    repo = Path(__file__).resolve().parents[1]
+    name = "hermes_plugins.sluice"
+    namespace = types.ModuleType("hermes_plugins")
+    namespace.__path__ = []  # type: ignore[attr-defined]
+    namespace.__package__ = "hermes_plugins"
+    sys.modules["hermes_plugins"] = namespace
+
+    spec = importlib.util.spec_from_file_location(
+        name, repo / "__init__.py", submodule_search_locations=[str(repo)]
+    )
+    assert spec is not None and spec.loader is not None
+    root = importlib.util.module_from_spec(spec)
+    root.__package__ = name
+    root.__path__ = [str(repo)]  # type: ignore[attr-defined]
+    sys.modules[name] = root
+    spec.loader.exec_module(root)
+    return importlib.import_module(f"{name}.sluice.backends.ddgs")
+
+
+_CANNED_DDGS_CHILD = """
+import json
+import sys
+
+payload = json.loads(sys.stdin.read() or "{}")
+row = {
+    "url": "https://example.test/row",
+    "title": str(payload.get("query") or ""),
+    "description": str(payload.get("timelimit") or ""),
+    "position": 1,
+}
+sys.stdout.write(json.dumps({"status": "ok", "payload": [row]}))
+"""
 
 
 def _capture_wall_clock(monkeypatch):
     seen: dict[str, float] = {}
 
-    def fake_run(target, args, *, timeout=12.0):
-        seen["timeout"] = timeout
+    def fake_run(*args, **kwargs):
+        seen["timeout"] = kwargs["timeout"]
         return "ok", []
 
     monkeypatch.setattr("sluice.backends.ddgs.run_in_child", fake_run)

@@ -4,18 +4,30 @@ Contract: ``references/endpoints.md#ddgs`` (lines 47-53) and PLAN.md:74-80. Sear
 
 ``ddgs`` (and its ``primp`` transport) can block inside native code while holding the GIL,
 so a thread-pool timeout may never fire and Ctrl+C can freeze the process (PLAN.md:78,
-DESIGN.md:191-193). Every search therefore runs in a **spawned child process** that the
-parent terminates and then kills after a hard 12 s wall clock.
+DESIGN.md:191-193). Every search therefore runs in a **fresh interpreter** that the parent
+kills after a hard 12 s wall clock.
+
+The child is a ``subprocess`` running a ``-c`` script, not a ``multiprocessing`` spawn. A
+spawned child unpickles the worker by module name; when Hermes loads this file as the
+directory plugin ``hermes_plugins.sluice.sluice.backends.ddgs`` that name does not exist in
+a fresh interpreter (``hermes_plugins`` is a synthetic package), so the child died with
+``ModuleNotFoundError`` before running a query. A ``-c`` script imports nothing from the
+loader namespace: it reads a JSON request on stdin, imports ``ddgs`` plus one helper from
+this checkout (``PYTHONPATH`` starts with the repository root), and prints one JSON object.
 """
 
 from __future__ import annotations
 
-import multiprocessing
+import json
+import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from . import Backend, BackendSpec
-from ._http import call_timeout, failure, search_row
+from ._http import call_timeout, failure
 
 SPEC = BackendSpec(
     id="ddgs",
@@ -35,15 +47,27 @@ WALL_CLOCK_SECONDS = 12.0
 #: references/endpoints.md:50-51.
 FRESHNESS_MAP: dict[str, str] = {"day": "d", "week": "w", "month": "m", "year": "y"}
 
+#: The child program. It never imports this module (or the loader's ``hermes_plugins``
+#: namespace): query, limit and timelimit arrive as one JSON object on stdin, and one JSON
+#: object leaves on stdout. ``search_row`` comes from this checkout through ``PYTHONPATH``.
+_CHILD_SOURCE = r"""
+import json
+import sys
 
-def _worker(connection: Any, query: str, limit: int, timelimit: str) -> None:
-    """Child-process entry point: query ddgs and send one ``(status, payload)`` message."""
+from sluice.backends._http import search_row
+
+
+def main() -> None:
     try:
-        from ddgs import DDGS  # type: ignore
+        payload = json.loads(sys.stdin.read() or "{}")
+        query = str(payload.get("query") or "")
+        limit = max(1, int(payload.get("limit") or 5))
+        timelimit = str(payload.get("timelimit") or "")
+        from ddgs import DDGS
 
-        rows: list[dict[str, Any]] = []
+        rows = []
         with DDGS(timeout=10) as client:
-            kwargs: dict[str, Any] = {"max_results": limit}
+            kwargs = {"max_results": limit}
             if timelimit:
                 kwargs["timelimit"] = timelimit
             for index, hit in enumerate(client.text(query, **kwargs)):
@@ -57,53 +81,88 @@ def _worker(connection: Any, query: str, limit: int, timelimit: str) -> None:
                         index + 1,
                     )
                 )
-        connection.send(("ok", rows))
-    except BaseException as exc:  # noqa: BLE001 - every child failure becomes a message
-        try:
-            connection.send(("error", f"{type(exc).__name__}: {exc}"))
-        except Exception:  # noqa: BLE001 - the parent may already have closed the pipe
-            pass
-    finally:
-        try:
-            connection.close()
-        except Exception:  # noqa: BLE001
-            pass
+        result = {"status": "ok", "payload": rows}
+    except BaseException as exc:  # noqa: BLE001 - every child failure becomes a JSON message
+        result = {"status": "error", "payload": f"{type(exc).__name__}: {exc}"}
+    sys.stdout.write(json.dumps(result))
+    sys.stdout.flush()
+
+
+main()
+"""
+
+
+def _child_env() -> dict[str, str]:
+    """The parent environment with this checkout's root first on ``PYTHONPATH``.
+
+    ``Path(__file__).resolve().parents[2]`` is the repository root both for a git checkout
+    and for ``~/.hermes/plugins/sluice``; the child needs it to import ``search_row`` from
+    the same copy of Sluice that started it.
+    """
+    env = dict(os.environ)
+    root = str(Path(__file__).resolve().parents[2])
+    entries = [entry for entry in (env.get("PYTHONPATH") or "").split(os.pathsep) if entry]
+    entries = [entry for entry in entries if entry != root]
+    env["PYTHONPATH"] = os.pathsep.join([root, *entries])
+    return env
 
 
 def run_in_child(
-    target: Callable[..., None],
-    args: tuple[Any, ...],
+    query: str,
+    limit: int,
+    timelimit: str,
     *,
     timeout: float = WALL_CLOCK_SECONDS,
 ) -> tuple[str, Any]:
-    """Run *target* in a spawned process; ``("ok"|"error"|"timeout", payload)``.
+    """Run one query in a fresh interpreter; ``("ok"|"error"|"timeout", payload)``.
 
-    The child is terminated and, if it ignores SIGTERM, killed. Nothing is left running:
-    a leaked ddgs child would keep a core pinned long after the search was abandoned.
+    The child is killed at the wall clock and reaped, then its pipes are closed. Nothing is
+    left running: a leaked ddgs child would keep a core pinned long after the search was
+    abandoned.
     """
-    context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe(duplex=False)
-    process = context.Process(target=target, args=(child, *args), daemon=True)
-    process.start()
-    child.close()
+    request = json.dumps({"query": query, "limit": limit, "timelimit": timelimit})
     try:
-        if parent.poll(timeout):
-            status, payload = parent.recv()
-        else:
-            status, payload = "timeout", None
-    except EOFError:  # child died before sending anything
-        status, payload = "error", "the ddgs worker exited without a result"
+        process = subprocess.Popen(
+            [sys.executable, "-c", _CHILD_SOURCE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_child_env(),
+        )
+    except OSError as exc:
+        return "error", f"could not start the ddgs worker: {exc}"
+
+    try:
+        try:
+            stdout, stderr = process.communicate(request, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:  # pragma: no cover - kill is immediate on POSIX
+                pass
+            return "timeout", None
     finally:
-        parent.close()
-        if process.is_alive():
-            process.terminate()
-            process.join(1.0)
-            if process.is_alive():
-                process.kill()
-                process.join(1.0)
-        else:
-            process.join(0.1)
-    return status, payload
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:  # noqa: BLE001 - a closed pipe is not an error
+                    pass
+
+    try:
+        message = json.loads(stdout)
+    except (TypeError, ValueError):
+        lines = [line for line in (stderr or "").strip().splitlines() if line.strip()]
+        detail = lines[-1] if lines else "the ddgs worker exited without a result"
+        return "error", detail
+    if not isinstance(message, dict):
+        return "error", "the ddgs worker returned a malformed result"
+    status = str(message.get("status") or "error")
+    if status not in ("ok", "error"):
+        return "error", f"the ddgs worker returned an unknown status: {status}"
+    return status, message.get("payload")
 
 
 class DdgsBackend(Backend):
@@ -144,7 +203,7 @@ class DdgsBackend(Backend):
         # The router's per-backend budget is shorter than the hard wall clock, so it
         # shortens this call; a direct call (the CLI, a probe) gets the full 12 s.
         wall_clock = call_timeout(kwargs, WALL_CLOCK_SECONDS)
-        status, payload = run_in_child(_worker, (query, safe_limit, timelimit), timeout=wall_clock)
+        status, payload = run_in_child(query, safe_limit, timelimit, timeout=wall_clock)
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         if status == "timeout":
             return failure(

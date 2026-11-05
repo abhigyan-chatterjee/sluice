@@ -8,6 +8,8 @@ jar and the retry path are exercised for real rather than mocked.
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 
 import httpx
@@ -19,6 +21,7 @@ from sluice.ladder import (
     RETRY_AFTER_CAP_SECONDS,
     STAGES,
     StageOutcome,
+    chromium_stage,
     classify,
     clean_html,
     extract_text,
@@ -450,6 +453,151 @@ def test_trafilatura_empty_result_falls_back_to_clean_html():
 def test_host_locale_and_timezone_are_usable_strings():
     assert isinstance(host_locale(), str) and host_locale()
     assert isinstance(host_timezone(), str) and host_timezone()
+
+
+# ── chromium rung: packaged fallback when Playwright's own build is absent ─────
+
+
+class _FakePage:
+    url = "https://example.test/page"
+
+    def goto(self, url, wait_until=None, timeout=None):
+        return _FakeResponse()
+
+    def wait_for_load_state(self, *args, **kwargs):
+        return None
+
+    def content(self):
+        body = " ".join(["rendered text from the fixture page"] * 20)
+        return f"<html><head><title>Fixture</title></head><body><p>{body}</p></body></html>"
+
+    def title(self):
+        return "Fixture"
+
+
+class _FakeResponse:
+    status = 200
+
+    def all_headers(self):
+        return {"content-type": "text/html"}
+
+
+class _FakeContext:
+    def add_cookies(self, cookies):
+        return None
+
+    def new_page(self):
+        return _FakePage()
+
+    def close(self):
+        return None
+
+
+class _FakeBrowser:
+    def new_context(self, **kwargs):
+        return _FakeContext()
+
+    def close(self):
+        return None
+
+
+class _FakeChromium:
+    """Records every ``launch`` and can fail the first N calls."""
+
+    def __init__(self, failures: int = 0) -> None:
+        self.calls: list[dict] = []
+        self.failures = failures
+
+    def launch(self, **kwargs):
+        self.calls.append(kwargs)
+        if len(self.calls) <= self.failures:
+            raise RuntimeError("Executable doesn't exist at /home/x/.cache/ms-playwright/chromium-1/chrome")
+        return _FakeBrowser()
+
+
+class _FakePlaywright:
+    def __init__(self, failures: int = 0) -> None:
+        self.chromium = _FakeChromium(failures)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _install_fake_playwright(monkeypatch, *, failures: int = 0) -> _FakePlaywright:
+    runtime = _FakePlaywright(failures)
+    package = types.ModuleType("playwright")
+    package.__path__ = []  # type: ignore[attr-defined]
+    sync_api = types.ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = lambda: runtime  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    return runtime
+
+
+def test_chromium_stage_passes_packaged_binary_when_playwright_has_no_build(monkeypatch):
+    """F3: the ladder must use a Chromium already on PATH instead of skipping the rung."""
+    runtime = _install_fake_playwright(monkeypatch)
+    monkeypatch.setattr("sluice.ladder.playwright_chromium_build", lambda: None)
+    monkeypatch.setattr("sluice.ladder.packaged_chromium_path", lambda: "/usr/bin/chromium")
+
+    outcome = chromium_stage("https://example.test/page")
+
+    assert outcome.block_class == "ok", outcome.reason or outcome.error
+    assert runtime.chromium.calls[0]["executable_path"] == "/usr/bin/chromium"
+    assert runtime.chromium.calls[0]["headless"] is False
+
+
+def test_chromium_stage_prefers_the_managed_build_and_passes_no_executable(monkeypatch):
+    runtime = _install_fake_playwright(monkeypatch)
+    monkeypatch.setattr(
+        "sluice.ladder.playwright_chromium_build", lambda: "/home/x/.cache/ms-playwright/chromium-1"
+    )
+    monkeypatch.setattr("sluice.ladder.packaged_chromium_path", lambda: "/usr/bin/chromium")
+
+    outcome = chromium_stage("https://example.test/page")
+
+    assert outcome.block_class == "ok"
+    assert "executable_path" not in runtime.chromium.calls[0]
+
+
+def test_chromium_stage_retries_with_packaged_binary_when_playwright_launch_fails(monkeypatch):
+    runtime = _install_fake_playwright(monkeypatch, failures=1)
+    monkeypatch.setattr(
+        "sluice.ladder.playwright_chromium_build", lambda: "/home/x/.cache/ms-playwright/chromium-1"
+    )
+    monkeypatch.setattr("sluice.ladder.packaged_chromium_path", lambda: "/usr/bin/chromium")
+
+    outcome = chromium_stage("https://example.test/page")
+
+    assert outcome.block_class == "ok"
+    assert len(runtime.chromium.calls) == 2
+    assert "executable_path" not in runtime.chromium.calls[0]
+    assert runtime.chromium.calls[1]["executable_path"] == "/usr/bin/chromium"
+
+
+@pytest.mark.parametrize(
+    "reported,expected",
+    [
+        (("C", "UTF-8"), "en-US"),
+        (("C", None), "en-US"),
+        (("POSIX", None), "en-US"),
+        ((None, None), "en-US"),
+        (("C.UTF-8", None), "en-US"),
+        (("c", None), "en-US"),
+        (("en_IN", "UTF-8"), "en-IN"),
+        (("en_US", "UTF-8"), "en-US"),
+        (("de_DE", "UTF-8"), "de-DE"),
+    ],
+)
+def test_host_locale_never_returns_a_tag_playwright_rejects(monkeypatch, reported, expected):
+    """F2: ``locale='C'`` makes ``Emulation.setLocaleOverride`` fail; normalize it."""
+    import locale as locale_module
+
+    monkeypatch.setattr(locale_module, "getlocale", lambda: reported)
+    assert host_locale() == expected
 
 
 def test_retry_after_cap_is_below_the_router_budget():

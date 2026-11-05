@@ -151,6 +151,11 @@ def load_settings(ctx: Any = None) -> dict[str, Any]:
             settings[env] = value
     if not settings.get("camofox_url"):
         settings["camofox_url"] = os.environ.get("CAMOFOX_URL", DEFAULTS["camofox_url"])
+    # ``SEARXNG_URL`` is how the CLI, the adapter messages and docker/searxng name the
+    # control; the plugin setting wins when both are set, so an explicit value is never
+    # shadowed by a stale shell export.
+    if not str(settings.get("searxng_url") or "").strip():
+        settings["searxng_url"] = os.environ.get("SEARXNG_URL", "").strip()
 
     settings["tier_order"] = _normalize_tier_order(settings.get("tier_order"))
     settings["keyless_enabled"] = _as_bool(settings.get("keyless_enabled"), True)

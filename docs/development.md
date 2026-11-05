@@ -32,10 +32,10 @@ Creating virtual environment at: .venv
 Resolved 43 packages in 625ms
 Installed 43 packages in 224ms
 ...
-359 passed, 12 skipped in 12.19s
+377 passed, 12 skipped in 13.67s
 ```
 
-Run the same three commands inside a git checkout and the count is `361 passed, 10 skipped`:
+Run the same three commands inside a git checkout and the count is `379 passed, 10 skipped`:
 `tests/test_surfaces.py` has two tests that skip when there is no `.git`, because they assert
 that the dashboard entry and API files are tracked and not gitignored. The ten skips in a
 checkout are the opt-in live vendor tests (below).
@@ -74,7 +74,8 @@ SLUICE_LIVE_TESTS=1 .venv/bin/pytest -q -k live
 ```
 
 Observed on 5 November 2026 with no API keys set (keyless tiers enabled, so five vendors were
-eligible):
+eligible). The run predates the F1-F4 regression tests, which is why it deselects 361 tests
+where the current suite deselects 379:
 
 ```
 1 failed, 4 passed, 5 skipped, 361 deselected in 6.09s
@@ -160,10 +161,12 @@ The JSON envelope is the point: the API is reachable and well-formed. The empty 
 comes from the container's upstream engines timing out (`unresponsive_engines` names all
 five), not from the settings file.
 
-The setting is `searxng_url`, not the `SEARXNG_URL` environment variable (see
-`docs/configuration.md`, "Known gaps"):
+Both controls work: the `searxng_url` setting wins, and `SEARXNG_URL` is the fallback when
+the setting is empty (`sluice/config.py:154-159`):
 
 ```sh
+SEARXNG_URL=http://127.0.0.1:8080 .venv/bin/sluice doctor
+# searxng      local    paid  n/a      ready
 hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8080
 hermes sluice test --backend searxng --limit 2 "sqlite wal"
 ```
@@ -319,7 +322,7 @@ Every command used in `README.md` and this page, and what it returned on 5 Novem
 | `hermes sluice status` | twelve rows, `cache: 0 live / 0 rows`, spend line |
 | `hermes sluice cache clear` | `deleted 0 row(s)`, `hermes cache/web: nothing at <scratch>/cache/web` |
 | `hermes sluice test --backend exa --limit 2 "sqlite wal checkpoint"` | `exa (keyless, keyless) answered in 886 ms with 2 result(s)` |
-| `hermes sluice test --backend ddgs ...` | fails in plugin mode: child process `ModuleNotFoundError: No module named 'hermes_plugins'` |
+| `.venv/bin/pytest tests/test_backends.py -q -k ddgs` | `13 passed`; the loader test imports `ddgs.py` as `hermes_plugins.sluice.sluice.backends.ddgs` and completes one query in a real child process |
 | `hermes sluice install camofox` | not exercised: it starts a container and the first start downloads the Camoufox bundle. The plan behind it is covered by `tests/test_manage.py` |
 | `hermes plugins doctor /home/abhi/sluice --ci` | `OK: runtime discovery, manifest parsing, import, and registration passed`, exit 0 |
 | `hermes plugins validate /home/abhi/sluice` | `Validation passed.`, exit 0, one warning on the private settings import |
@@ -327,7 +330,7 @@ Every command used in `README.md` and this page, and what it returned on 5 Novem
 | `podman-compose -f docker/searxng/docker-compose.yml up -d` | image pulled, `sluice-searxng` started |
 | `curl -s "http://127.0.0.1:8080/search?q=sluice&format=json"` | JSON envelope, five engines reported `timeout` |
 | `podman-compose -f docker/searxng/docker-compose.yml down` | container and network removed |
-| `.venv/bin/pytest -q` | `361 passed, 10 skipped` in a git checkout |
+| `.venv/bin/pytest -q` | `379 passed, 10 skipped` in a git checkout |
 | `SLUICE_LIVE_TESTS=1 .venv/bin/pytest -q -k live` | `1 failed, 4 passed, 5 skipped` (Firecrawl keyless quota) |
 | `python demo/fixture_server.py --port 8765` | nine fixture URLs printed |
 | `curl -i http://127.0.0.1:8765/cf` | `HTTP/1.1 403 Forbidden` plus `cf-mitigated: challenge` |

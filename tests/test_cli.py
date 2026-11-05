@@ -70,6 +70,7 @@ def test_doctor_names_the_searxng_compose_command(isolated, capsys):
     assert _run(["doctor"]) == 0
     out = capsys.readouterr().out
     assert "SEARXNG_URL" in out
+    assert "hermes config set plugins.entries.sluice.settings.searxng_url" in out
     assert "docker compose -f docker/searxng/docker-compose.yml up -d" in out
 
 

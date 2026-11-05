@@ -70,8 +70,9 @@ def _next_command(backend: Any, settings: Mapping[str, Any]) -> str:
     """The exact next command for one unroutable backend."""
     if backend.spec.id == "searxng":
         return (
-            "set SEARXNG_URL (for example http://localhost:8080) then: "
-            "docker compose -f docker/searxng/docker-compose.yml up -d"
+            "set SEARXNG_URL (for example http://127.0.0.1:8888), or: "
+            "hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8888; "
+            "then: docker compose -f docker/searxng/docker-compose.yml up -d"
         )
     env = backend.spec.secret_env or ""
     if env and not settings.get(env):

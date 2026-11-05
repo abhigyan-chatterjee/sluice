@@ -86,10 +86,10 @@ standalone console script:
 ## Minimal configuration
 
 None. The keyless tier is on by default, so Exa's MCP endpoint, Parallel's MCP endpoint,
-Firecrawl, Tavily and Keenable answer with no key at all, and `ddgs` does the same from a
-checkout (inside Hermes it currently fails; see "Known defects"). A backend with a key runs
-keyed; a backend without one runs its keyless path when keyless tiers are enabled; otherwise
-it is skipped and the reason is printed.
+Firecrawl, Tavily and Keenable answer with no key at all, and `ddgs` runs from a local child
+process with no key either. A backend with a key runs keyed; a backend without one runs its
+keyless path when keyless tiers are enabled; otherwise it is skipped and the reason is
+printed.
 
 API keys are set in **Settings ▸ Plugins**, not through the CLI and not through the pane:
 Hermes stores them in the profile's `.env` and Sluice reads presence through
@@ -130,8 +130,15 @@ if __name__ == "__main__":
 ```sh
 uv venv
 uv pip install -e .
+.venv/bin/sluice install playwright
 .venv/bin/python example.py
 ```
+
+`sluice install playwright` downloads Playwright's Chromium build. If it is skipped, the
+Chromium rung uses a `google-chrome`, `google-chrome-stable`, `chromium`,
+`chromium-browser` or `chrome` binary already on `PATH` instead. With neither present, the
+`/js` line prints `js: js_required via http` and the other two lines are unchanged. The
+output below was reproduced with the normal locale, `LANG=C.UTF-8` and `env -i`.
 
 Observed output on 5 November 2026:
 
@@ -152,9 +159,9 @@ search success: True
 The three extract lines are the ladder doing its job on the fixture pages: `/ok` is read at
 the HTTP rung, the JavaScript shell `/js` is read at the Chromium rung, and `/private` never
 gets a request because `robots.txt` disallows it. Which keyless backend answers a search
-varies with load and latency; every row names it. The `if __name__ == "__main__":` guard is
-required: the `ddgs` backend runs in a spawned child process, and without the guard the child
-re-imports the script and fails.
+varies with load and latency; every row names it. `ddgs` runs its query in a separate
+interpreter that reads one JSON request on stdin and prints one JSON object, so the
+`if __name__ == "__main__":` guard in the sample is conventional rather than required.
 
 The same thing through Hermes, once the plugin is installed:
 
@@ -307,21 +314,12 @@ Also not shipped:
 - `SUBMISSION.md` and the 90-second demo recording (`PLAN.md` T14). They are external
   submission artifacts, not runtime code.
 
-Known defects in 1.0.0:
-
-- `ddgs` cannot spawn its child process when the plugin runs inside Hermes: the child fails
-  with `ModuleNotFoundError: No module named 'hermes_plugins'`, the router records the
-  failure and continues to the next candidate. The standalone CLI and a checkout-local
-  Python are unaffected.
-- `SEARXNG_URL` is named by messages but never read. Configure SearXNG with the
-  `searxng_url` setting.
-
 ## Development
 
 ```sh
 uv venv
 uv pip install -e ".[dev]"
-.venv/bin/pytest -q           # 361 passed, 10 skipped in a git checkout
+.venv/bin/pytest -q           # 379 passed, 10 skipped in a git checkout
 ```
 
 Live vendor calls are opt-in with `SLUICE_LIVE_TESTS=1`. The fixture server for the demo is
