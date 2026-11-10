@@ -323,3 +323,24 @@ def apply_overrides(base: Mapping[str, Any], overrides: Mapping[str, Any]) -> di
     merged: MutableMapping[str, Any] = dict(base)
     merged.update(overrides)
     return dict(merged)
+
+
+def manifest_schema() -> dict[str, dict[str, Any]]:
+    """``config_schema`` from the shipped ``plugin.yaml``, keyed by setting name.
+
+    The manifest is the one place a setting's human label and explanation are written, so
+    the desktop pane reads them from here instead of hardcoding a second copy that drifts.
+    Returns ``{}`` when the manifest cannot be read: a missing label is a cosmetic loss and
+    must never stop the pane from rendering.
+    """
+    try:
+        import yaml
+
+        path = Path(__file__).resolve().parents[1] / "plugin.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - a cosmetic lookup never breaks the pane
+        return {}
+    schema = data.get("config_schema")
+    if not isinstance(schema, dict):
+        return {}
+    return {str(key): value for key, value in schema.items() if isinstance(value, dict)}

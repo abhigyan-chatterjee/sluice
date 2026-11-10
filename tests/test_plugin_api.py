@@ -607,3 +607,46 @@ def test_a_pinned_backend_receives_a_clamped_limit(env, monkeypatch):
     )
     assert result["ok"] is True
     assert seen["limit"] == 1
+
+
+# ── User-facing copy ──────────────────────────────────────────────────────────────
+# Every `description` in the manifest renders verbatim in Settings ▸ Plugins and in the
+# desktop pane. Internal build-plan bookkeeping (a doc name and a line number) is not
+# copy a user should ever read, so the manifest is held to that rule here rather than
+# relying on someone noticing it in a screenshot.
+
+#: Substrings that mark a description as internal provenance rather than product copy.
+_INTERNAL_MARKERS = ("PLAN.md", "DESIGN.md", "REQUIREMENTS.md", "references/", "RESEARCH")
+
+
+def test_no_setting_description_carries_an_internal_document_reference():
+    from sluice.config import manifest_schema
+
+    offenders = {
+        key: str(entry.get("description") or "")
+        for key, entry in manifest_schema().items()
+        if any(marker in str(entry.get("description") or "") for marker in _INTERNAL_MARKERS)
+    }
+    assert offenders == {}, f"internal doc references in user-facing copy: {offenders}"
+
+
+def test_every_editable_setting_has_a_label_and_a_description():
+    """The pane renders both, so a missing one is a blank row in the UI."""
+    payload = api.settings_payload(settings=dict(DEFAULTS))
+    schema = payload["schema"]
+    assert set(schema) == set(payload["editable"])
+    for key, entry in schema.items():
+        assert entry["label"].strip(), f"{key} has no label"
+        assert entry["description"].strip(), f"{key} has no description"
+        assert entry["label"] != key.replace("_", " "), f"{key} fell back to a humanised key"
+
+
+def test_the_schema_labels_match_the_manifest_exactly():
+    """One source of truth: the pane must not keep its own copy of the labels."""
+    from sluice.config import manifest_schema
+
+    manifest = manifest_schema()
+    payload = api.settings_payload(settings=dict(DEFAULTS))
+    for key, entry in payload["schema"].items():
+        assert entry["label"] == manifest[key]["label"], key
+        assert entry["description"] == manifest[key]["description"], key

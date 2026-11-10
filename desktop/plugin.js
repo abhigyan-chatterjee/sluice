@@ -44,21 +44,29 @@ const HEALTH_LABEL = {
   error: 'error'
 }
 
-const NUMERIC_FIELDS = [
-  ['per_backend_budget_ms', 'Per-backend budget (ms)'],
-  ['total_budget_ms', 'Total budget (ms)'],
-  ['search_ttl_general', 'Search TTL, general (s)'],
-  ['search_ttl_news', 'Search TTL, news (s)'],
-  ['extract_ttl', 'Extract TTL (s)'],
-  ['negative_ttl', 'Negative cache TTL (s)'],
-  ['domain_memory_ttl', 'Domain memory TTL (s)'],
-  ['circuit_failures', 'Failures that open a circuit'],
-  ['circuit_open_seconds', 'Circuit open (s)'],
-  ['circuit_quota_seconds', 'Quota open (s)'],
-  ['cache_max_mb', 'Cache cap (MB)']
+//: Numeric settings, in the order the pane lists them. Labels and explanations come from
+//: the manifest through ``/settings`` (see ``schema``), so they are not repeated here.
+const NUMERIC_KEYS_ORDERED = [
+  'per_backend_budget_ms',
+  'total_budget_ms',
+  'search_ttl_general',
+  'search_ttl_news',
+  'extract_ttl',
+  'negative_ttl',
+  'domain_memory_ttl',
+  'circuit_failures',
+  'circuit_open_seconds',
+  'circuit_quota_seconds',
+  'cache_max_mb'
 ]
 
-const NUMERIC_KEYS = new Set(NUMERIC_FIELDS.map(([key]) => key))
+const NUMERIC_KEYS = new Set(NUMERIC_KEYS_ORDERED)
+
+//: Fallback label when the manifest does not supply one: the key, made readable.
+function humanise(key) {
+  const spaced = String(key).replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
 
 function ms(value) {
   return typeof value === 'number' ? `${Math.round(value)} ms` : '—'
@@ -531,6 +539,13 @@ function SettingsPage({ ctx }) {
 
   const plans = (payload && payload.plans) || {}
   const values = draft
+  // Labels and explanations live in the manifest and arrive with the settings payload, so
+  // the pane never keeps a second copy that can drift from what Settings shows.
+  const schema = (payload && payload.schema) || {}
+  const meta = (key) => ({
+    label: (schema[key] && schema[key].label) || humanise(key),
+    description: (schema[key] && schema[key].description) || ''
+  })
   // A refused SEARXNG_URL is dropped to '' by the backend, so the pane would show an empty
   // field with no explanation; the reason travels in the settings payload (F4 residual).
   const searxngError = (payload && payload.searxng_url_error) || ''
@@ -567,22 +582,22 @@ function SettingsPage({ ctx }) {
           children: [
             jsx('div', { className: 'font-medium', children: 'Routing' }),
             jsx(Field, {
-              label: 'Tier order',
+              label: meta('tier_order').label,
               value: values.tier_order || '',
               onChange: setValue('tier_order'),
-              hint: 'local,keyless,free,paid — cheapest first'
+              hint: meta('tier_order').description
             }),
             jsx(ToggleRow, {
-              label: 'Keyless tiers',
-              description: 'Allow anonymous tiers (ddgs, keyless MCP and public endpoints).',
+              label: meta('keyless_enabled').label,
+              description: meta('keyless_enabled').description,
               checked: Boolean(values.keyless_enabled),
               onChange: (on) => setDraft((prev) => ({ ...prev, keyless_enabled: on }))
             }),
             jsx(Field, {
-              label: 'SearXNG URL',
+              label: meta('searxng_url').label,
               value: values.searxng_url || '',
               onChange: setValue('searxng_url'),
-              hint: 'empty disables the local backend'
+              hint: meta('searxng_url').description
             }),
             searxngError
               ? jsx('span', {
@@ -596,8 +611,17 @@ function SettingsPage({ ctx }) {
           className: 'flex flex-col gap-1',
           children: [
             jsx('div', { className: 'font-medium', children: 'Timeouts and cache' }),
-            ...NUMERIC_FIELDS.map(([key, label]) =>
-              jsx(Field, { label, value: String(values[key] ?? ''), onChange: setValue(key) }, key)
+            ...NUMERIC_KEYS_ORDERED.map((key) =>
+              jsx(
+                Field,
+                {
+                  label: meta(key).label,
+                  value: String(values[key] ?? ''),
+                  onChange: setValue(key),
+                  hint: meta(key).description
+                },
+                key
+              )
             )
           ]
         }),

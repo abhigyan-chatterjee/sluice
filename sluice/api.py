@@ -26,6 +26,7 @@ from .config import (
     backend_plan,
     configured_backends,
     load_settings,
+    manifest_schema,
     normalize_searxng_url,
     plan_settings,
     plugin_data_dir,
@@ -399,6 +400,7 @@ def cache_clear_payload(
 
 def settings_payload(*, settings: Mapping[str, Any] | None = None) -> dict[str, Any]:
     settings = settings or load_settings()
+    schema = manifest_schema()
     return {
         "ok": True,
         "values": {key: settings.get(key, DEFAULTS.get(key)) for key in EDITABLE_KEYS},
@@ -407,6 +409,16 @@ def settings_payload(*, settings: Mapping[str, Any] | None = None) -> dict[str, 
         "searxng_url_error": str(settings.get("searxng_url_error") or ""),
         "plans": _plan_values(settings),
         "editable": list(EDITABLE_KEYS),
+        # The pane renders its settings page from these, so a label or explanation is
+        # written once, in the manifest, and cannot drift from what Settings shows.
+        "schema": {
+            key: {
+                "label": str(schema.get(key, {}).get("label") or key.replace("_", " ")),
+                "description": str(schema.get(key, {}).get("description") or ""),
+                "type": str(schema.get(key, {}).get("type") or "str"),
+            }
+            for key in EDITABLE_KEYS
+        },
         "plan_key_pattern": "plan_<vendor>",
         "tier_choices": ["local", "keyless", "free", "paid"],
     }
