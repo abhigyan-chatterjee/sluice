@@ -14,7 +14,7 @@ Read from `api.typeform.com/forms/FwJLvOln`. Field order is the order the form a
 |---|---|---|---|---|
 | 1 | Plugin Title | short text | yes | `Sluice` |
 | 2 | Plugin Description | short text | yes | The one-liner from `plugin.yaml:3` |
-| 3 | Email Address | email | yes | `officialpxrpose@gmail.com` |
+| 3 | Email Address | email | yes | `abhi@nullbit.in` |
 | 4 | Discord Username | short text | yes | **Abhi must supply** — not recorded anywhere |
 | 5 | X Demo Post Link | website | **yes** | The link to the demo video **posted on X** |
 | 6 | *(statement)* | — | — | Instructions to open the catalog PR, then Continue |

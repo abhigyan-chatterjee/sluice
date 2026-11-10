@@ -9,7 +9,7 @@ This document provides the complete project submission summary for **Sluice**, d
 - **Repository**: [https://github.com/abhigyan-chatterjee/sluice](https://github.com/abhigyan-chatterjee/sluice)
 - **Primary Branch**: `main`
 - **License**: MIT
-- **Author**: Abhigyan Chatterjee (`officialpxrpose@gmail.com`, `abhi@nullbit.in`)
+- **Author**: Abhigyan Chatterjee (`abhi@nullbit.in`)
 - **Compatibility**: Hermes Agent `>=0.22.5`
 
 ### What Sluice Is
@@ -130,8 +130,9 @@ done; the catalog PR is open; the Typeform is the remaining step.
   - Entry file: `submission/plugin-catalog-sluice.yaml`, catalog key `sluice-search`.
   - Pin: `b40e6b97601b715175fb656513ce84195bc4de8b`. Re-check against the tip of `main` at
     submit time; a moved tip needs a re-pin PR, not an edit to this one.
-- [ ] **Submit Typeform**:
-  - Fill out the hackathon submission form using the pre-filled factual parameters below.
+- [x] **Submit Typeform** — done. `https://form.typeform.com/to/FwJLvOln` returned
+  "Submission Received" on 2026-11-11. Winners are announced on @nousresearch on X after the
+  hackathon closes on 11 Nov, 1 pm PST.
 
 ---
 
@@ -145,7 +146,7 @@ done; the catalog PR is open; the Typeform is the remaining step.
 | **Pinned Commit SHA** | `b40e6b97601b715175fb656513ce84195bc4de8b` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
-| **Contact Email** | `officialpxrpose@gmail.com` / `abhi@nullbit.in` | Verified profile contact |
+| **Contact Email** | `abhi@nullbit.in` | Personal dev/project contact |
 | **Hermes Compatibility** | `>=0.22.5` | `plugin.yaml:8` |
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
 | **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
