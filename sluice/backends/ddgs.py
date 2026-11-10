@@ -152,6 +152,13 @@ def run_in_child(
             stderr=subprocess.PIPE,
             text=True,
             env=_child_env(),
+            # A `-c` child puts the cwd on sys.path as `''`, ahead of PYTHONPATH. When the
+            # agent happens to run from a directory that contains a `sluice/` folder (the
+            # source checkout lives at ``~/sluice``), the child imports *that* package and
+            # dies on `sluice.backends` because the checkout's layout differs from the
+            # plugin's. Pinning the child to the plugin root makes the import resolve to
+            # the copy that spawned it, whatever directory the agent is sitting in.
+            cwd=str(Path(__file__).resolve().parents[2]),
         )
     except OSError as exc:
         return "error", f"could not start the ddgs worker: {exc}"
