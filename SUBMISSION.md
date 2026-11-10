@@ -128,7 +128,7 @@ The following checklist explicitly enumerates items that require personal execut
     4. `0:44–1:05`: Run ladder extract against `http://127.0.0.1:8765/cf`. Show classification as `challenge`, escalation to Playwright Chromium, and the 24h block memory in desktop pane.
     5. `1:05–1:20`: Run ladder extract against `http://127.0.0.1:8765/private`. Demonstrate local `robots.txt` rejection before any outbound HTTP packet is sent.
     6. `1:20–1:25`: Close on `hermes sluice doctor` tier overview.
-  - **Upload**: Export video (1080p recommended) and upload to Loom, YouTube (unlisted), or Google Drive. Record the public link below.
+  - **Upload**: Post the video on **X and tag @NousResearch**. The form's field 5 is "X Demo Post Link" and it is required — a Loom/YouTube/Drive link does not satisfy it. Capture the post URL. See `submission/typeform.md` for the full field list.
 - [ ] **Open Upstream Catalog Pull Request**:
   - Fork/clone the official Hermes plugins directory repository.
   - Paste the **Plugin Catalog PR Draft** content above.
@@ -155,6 +155,8 @@ The following checklist explicitly enumerates items that require personal execut
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
 | **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
 | **Test Verification** | 552 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `c5aac71`; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
-| **Demo Video URL** | *(Requires Abhi)* | Paste URL after recording |
+| **Demo Video URL** | *(Requires Abhi)* | Must be the **X post URL** carrying the video with @NousResearch tagged — see `submission/typeform.md` |
+| **Discord Username** | *(Requires Abhi)* | Required form field; not recorded anywhere |
+| **Form** | `https://form.typeform.com/to/FwJLvOln` | "Hermes Agent Plugin Hackathon Submission Form" |
 | **Catalog PR URL** | `https://github.com/NousResearch/hermes-agent/pull/152754` | Open, awaiting maintainer review |
 | **Confirmation Signature** | *(Requires Abhi)* | Abhigyan Chatterjee |
