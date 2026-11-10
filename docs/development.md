@@ -246,7 +246,7 @@ cache. The only file created under `$DEV` was `$DEV/data/sluice.db`.
 To test the installed-plugin path instead, install from a scratch Hermes home:
 
 ```sh
-hermes plugins install abhigyan-chatterjee/sluice --no-deps --enable
+hermes plugins install sluice-search --no-deps --enable
 hermes plugins enable sluice
 hermes sluice doctor
 ```

@@ -35,11 +35,15 @@ the backend that answered on every row.
 ## Install
 
 ```sh
-hermes plugins install abhigyan-chatterjee/sluice
+hermes plugins install sluice-search
 hermes plugins enable sluice
 hermes plugins doctor sluice --ci
 hermes sluice doctor
 ```
+
+The catalog key is `sluice-search` because an unrelated plugin already owns the `sluice`
+name in the upstream catalog. The plugin itself is still named `sluice`, so it installs
+into `plugins/sluice` and enables as `sluice`.
 
 `hermes plugins install` asks before installing the plugin's four Python dependencies
 (`httpx`, `trafilatura`, `playwright`, `ddgs`). `doctor --ci` exits non-zero on a manifest or
