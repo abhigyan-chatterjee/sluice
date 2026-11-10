@@ -22,7 +22,7 @@
 name: sluice-search
 title: Sluice
 repo: https://github.com/abhigyan-chatterjee/sluice
-sha: 913ff845524bc145e80e42e40ab82d5c0735a8e0
+sha: b40e6b97601b715175fb656513ce84195bc4de8b
 description: Tiered free-first web search and extraction router and backend manager for Hermes
 maintainer: Abhigyan Chatterjee
 version: "1.0.0"
