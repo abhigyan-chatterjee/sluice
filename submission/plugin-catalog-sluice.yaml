@@ -17,7 +17,7 @@
 # playwright>=1.45,<2; ddgs>=9,<10.
 #
 # Pin re-check: re-verify this sha against the tip of main at submit time. The tree
-# verified here: pytest 552 passed / 10 skipped, `hermes plugins validate` 16 checks
+# verified here: pytest 555 passed / 10 skipped, `hermes plugins validate` 16 checks
 # with no warnings, `hermes plugins doctor --ci` exit 0.
 name: sluice-search
 title: Sluice

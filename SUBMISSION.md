@@ -32,7 +32,7 @@ Sluice is a production-grade, tiered, free-first web search and extraction engin
   Implements a nine-class block classifier: `ok`, `js_required`, `rate_limited`, `challenge`, `forbidden`, `auth_required`, `payment_required`, `policy_blocked` and `error`. Vendor markers (Cloudflare, Imperva, PerimeterX/HUMAN, Kasada, Akamai, DataDome, AWS WAF, Fastly) feed the `challenge` class. Escalates extraction across three stages: HTTP (httpx + trafilatura) → real Chromium through Playwright → the Camofox REST server, stopping at authentication and policy boundaries. Checks `robots.txt` before the first request and `X-Robots-Tag`/`Content-Signal` on every response.
 
 ### Hermetic Test Story
-- **Test Results**: `552 passed, 10 skipped`, 0 failed across 13 test modules at the pinned commit `c5aac71`. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`. Re-run `pytest -q` at the tip of `main` for the current number.
+- **Test Results**: `555 passed, 10 skipped`, 0 failed across 13 test modules at the pinned commit `913ff84`. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`. Re-run `pytest -q` at the tip of `main` for the current number.
 - **Hermetic Isolation**: Tests run against a synthetic temporary `HERMES_HOME` with zero writes to host configuration or live agent state.
 - **Validation**:
   - `hermes plugins doctor --ci`: Passed (exit code 0).
@@ -103,7 +103,7 @@ hermes config set web.extract_backend sluice
 ```
 
 ### Verification
-- 552 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit `c5aac71`.
+- 555 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit `913ff84`.
 - `hermes plugins doctor --ci` and `hermes plugins validate` pass with 0 errors.
 ```
 
@@ -111,30 +111,25 @@ hermes config set web.extract_backend sluice
 
 ## 3. Submission Checklist & Typeform Package (Needs Abhi)
 
-The following checklist explicitly enumerates items that require personal execution by Abhi. None are checked off.
+The following checklist enumerates the items that needed personal execution. The video is
+done; the catalog PR is open; the Typeform is the remaining step.
 
 ### Action Checklist
-- [ ] **Record Demo Video (<90s)**:
-  - **Target Runtime**: 75–85 seconds (strict maximum 90 seconds).
-  - **Reference Guide**: Follow `demo/script.md`.
-  - **Pre-flight**:
-    1. Start local fixture: `python demo/fixture_server.py --port 8765 &`
-    2. Warm doctor cache: `hermes sluice doctor > /dev/null`
-    3. Arrange screen: Terminal window (left), Hermes Desktop Sluice pane (right).
-  - **Shot List & Narration Beats**:
-    1. `0:00–0:12`: Run `hermes sluice doctor`. Highlight 12 backends, tier layout, and diagnostic next-action commands.
-    2. `0:12–0:28`: Run `hermes sluice test --backend ddgs "zstd vs gzip compression ratio"`. Demonstrate returned backend and tier metadata.
-    3. `0:28–0:44`: Execute simulated quota trip via store helper. Show immediate status update in desktop pane and seamless fallback to next backend tier.
-    4. `0:44–1:05`: Run ladder extract against `http://127.0.0.1:8765/cf`. Show classification as `challenge`, escalation to Playwright Chromium, and the 24h block memory in desktop pane.
-    5. `1:05–1:20`: Run ladder extract against `http://127.0.0.1:8765/private`. Demonstrate local `robots.txt` rejection before any outbound HTTP packet is sent.
-    6. `1:20–1:25`: Close on `hermes sluice doctor` tier overview.
-  - **Upload**: Post the video on **X and tag @NousResearch**. The form's field 5 is "X Demo Post Link" and it is required — a Loom/YouTube/Drive link does not satisfy it. Capture the post URL. See `submission/typeform.md` for the full field list.
-- [ ] **Open Upstream Catalog Pull Request**:
-  - Fork/clone the official Hermes plugins directory repository.
-  - Paste the **Plugin Catalog PR Draft** content above.
-  - Pin the exact 40-character commit SHA from `main`.
-  - Catalog entry file: `submission/plugin-catalog-sluice.yaml` (in this repo).
-  - Re-check the commit pin in that file against the tip of `main` at submit time.
+- [x] **Record Demo Video (<90s)** — done, 56.9 s:
+  - **File**: `~/sluice-demo-render/sluice-demo.mp4`, 1920x1080, H.264, no audio.
+  - **How it was made**: `sluice-demo-render/sluice.tape` drives a real pty through VHS, so
+    every frame is the terminal's own output. Re-render with `vhs sluice.tape`.
+  - **Re-prove every claim**: `bash sluice-demo-render/verify.sh` (14 checks, PASS/FAIL each).
+  - **Beats**: doctor inventory · ddgs search · exa search · status · challenge climbed to
+    Chromium · robots.txt refusal · the test suite.
+  - **Upload**: Post the video on **X and tag @NousResearch**. The form's field 5 is "X Demo
+    Post Link" and it is required — a Loom/YouTube/Drive link does not satisfy it. Capture the
+    post URL. See `submission/typeform.md` for the full field list.
+- [x] **Open Upstream Catalog Pull Request** — done:
+  - PR: `https://github.com/NousResearch/hermes-agent/pull/152754`
+  - Entry file: `submission/plugin-catalog-sluice.yaml`, catalog key `sluice-search`.
+  - Pin: `913ff845524bc145e80e42e40ab82d5c0735a8e0`. Re-check against the tip of `main` at
+    submit time; a moved tip needs a re-pin PR, not an edit to this one.
 - [ ] **Submit Typeform**:
   - Fill out the hackathon submission form using the pre-filled factual parameters below.
 
@@ -147,14 +142,14 @@ The following checklist explicitly enumerates items that require personal execut
 | **Plugin Name** | `sluice` (catalog key: `sluice-search`) | `plugin.yaml:1`. The catalog key cannot be `sluice`: an unrelated plugin already owns `plugin-catalog/sluice.yaml` upstream (orjinameh/airlock). The plugin still installs and enables as `sluice`. |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
-| **Pinned Commit SHA** | `c5aac7134d6ae95a173bf7d7e2b42cce0e301624` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 552 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
+| **Pinned Commit SHA** | `913ff845524bc145e80e42e40ab82d5c0735a8e0` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
 | **Contact Email** | `officialpxrpose@gmail.com` / `abhi@nullbit.in` | Verified profile contact |
 | **Hermes Compatibility** | `>=0.22.5` | `plugin.yaml:8` |
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
 | **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
-| **Test Verification** | 552 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `c5aac71`; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
+| **Test Verification** | 555 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `913ff84`; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
 | **Demo Video URL** | *(Requires Abhi)* | Must be the **X post URL** carrying the video with @NousResearch tagged — see `submission/typeform.md` |
 | **Discord Username** | *(Requires Abhi)* | Required form field; not recorded anywhere |
 | **Form** | `https://form.typeform.com/to/FwJLvOln` | "Hermes Agent Plugin Hackathon Submission Form" |
