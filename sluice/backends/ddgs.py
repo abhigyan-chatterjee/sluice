@@ -104,11 +104,28 @@ def _child_env() -> dict[str, str]:
     ``Path(__file__).resolve().parents[2]`` is the repository root both for a git checkout
     and for ``~/.hermes/plugins/sluice``; the child needs it to import ``search_row`` from
     the same copy of Sluice that started it.
+
+    The interpreter is the same ``sys.executable``, but Hermes starts it with ``-I`` and
+    pops ``PYTHONPATH``, so the venv reaches the parent through ``sys.path`` and not through
+    the environment. A child rebuilt from ``os.environ`` alone therefore loses every
+    third-party package the plugin declared (``ddgs`` included) and dies with
+    ``ModuleNotFoundError`` even though the parent imported it fine. The parent's own
+    ``sys.path`` entries are appended after the root so the child sees the same packages.
     """
     env = dict(os.environ)
     root = str(Path(__file__).resolve().parents[2])
     entries = [entry for entry in (env.get("PYTHONPATH") or "").split(os.pathsep) if entry]
     entries = [entry for entry in entries if entry != root]
+    # Inherited from the parent interpreter, not from the environment: this is where the
+    # plugin's declared dependencies actually live under Hermes.
+    for entry in sys.path:
+        if not entry or entry == root or entry in entries:
+            continue
+        # Skip the plugin's own directory and the stdlib/zip entries; only site-packages
+        # and similar import roots are worth handing down.
+        if "site-packages" not in entry and "dist-packages" not in entry:
+            continue
+        entries.append(entry)
     env["PYTHONPATH"] = os.pathsep.join([root, *entries])
     return env
 
