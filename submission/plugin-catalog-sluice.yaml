@@ -21,7 +21,7 @@
 # with no warnings, `hermes plugins doctor --ci` exit 0.
 name: sluice-search
 repo: https://github.com/abhigyan-chatterjee/sluice
-sha: 0265e1c01223d00700408b2aa66021769527a07b
+sha: 0d3f9462f6300872d9cb8e89136090e6f1e82281
 description: Tiered free-first web search and extraction router and backend manager for Hermes
 maintainer: Abhigyan Chatterjee
 version: "1.0.0"
