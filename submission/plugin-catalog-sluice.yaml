@@ -20,6 +20,7 @@
 # verified here: pytest 552 passed / 10 skipped, `hermes plugins validate` 16 checks
 # with no warnings, `hermes plugins doctor --ci` exit 0.
 name: sluice-search
+title: Sluice
 repo: https://github.com/abhigyan-chatterjee/sluice
 sha: 0d3f9462f6300872d9cb8e89136090e6f1e82281
 description: Tiered free-first web search and extraction router and backend manager for Hermes
@@ -28,6 +29,10 @@ version: "1.0.0"
 tier: community
 category: web
 requires_hermes: ">=0.22.5"
+docs_url: https://github.com/abhigyan-chatterjee/sluice#readme
+platforms:
+  - linux
+  - macos
 capabilities:
   provides_tools: []
   provides_hooks: []
