@@ -1,6 +1,6 @@
 """Sluice implementation package.
 
-Submodules are imported on demand by :mod:`hermes_plugins.sluice` (the repository-root
+Submodules are imported on demand by :mod:`hermes_plugins.sluice_search` (the repository-root
 ``__init__.py``) and by the CLI; importing this package must stay free of Hermes and
 third-party imports so the plugin validates and tests can import it in a bare
 interpreter.

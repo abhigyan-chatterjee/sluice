@@ -168,11 +168,11 @@ SECRET_ENVS: tuple[str, ...] = (
 EXTRA_ENVS: tuple[str, ...] = ("BROWSERBASE_API_KEY", "CAMOFOX_URL")
 
 #: The manifest name, also the plugin id Hermes stores settings under.
-PLUGIN_ID = "sluice"
+PLUGIN_ID = "sluice-search"
 
 
 def saved_settings() -> dict[str, Any]:
-    """Values written by Settings ▸ Plugins (``plugins.entries.sluice.settings``).
+    """Values written by Settings ▸ Plugins (``plugins.entries.sluice-search.settings``).
 
     Read-only and Hermes-optional: outside Hermes the CLI and tests run on defaults plus
     the environment, exactly as they did before this function existed.
@@ -210,7 +210,7 @@ def load_settings(ctx: Any = None) -> dict[str, Any]:
     ``ctx.get_config(key, default)`` returns the default when the user has not set the key,
     so a missing value keeps the manifest default instead of becoming ``None``. Without a
     context (the CLI, the dashboard API, the desktop pane's backend) the same values are
-    read straight from Hermes' config file — ``plugins.entries.sluice.settings`` — so every
+    read straight from Hermes' config file — ``plugins.entries.sluice-search.settings`` — so every
     surface sees one configuration.
     """
     settings: dict[str, Any] = dict(DEFAULTS)

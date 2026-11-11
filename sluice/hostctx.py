@@ -35,7 +35,7 @@ def _state() -> types.ModuleType:
     the package ``__path__`` (``plugins_loader._load_directory_module``,
     ``plugin_host_child._import_plugin``), while ``dashboard/plugin_api.py`` is mounted by
     file path and reaches ``sluice.api`` under whatever name it can import. ``register()``
-    therefore lands on ``hermes_plugins.sluice.sluice.hostctx``, and a process where the
+    therefore lands on ``hermes_plugins.sluice_search.sluice.hostctx``, and a process where the
     wrapper bound another copy reaches ``sluice.hostctx``: two module objects for this one
     file. A module global would be per copy, and the context parked by one copy would stay
     invisible to the other (every ``POST /settings`` answered "no Hermes plugin context"

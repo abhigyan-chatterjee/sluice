@@ -31,7 +31,7 @@ line names backend, tier and latency. Settings page holds tier order, per-backen
 keyless toggle, cache TTL, timeouts, the real-profile link and the two config-route
 buttons. Palette entries: probe backends, test query, clear cache. Use `PANES_AREA`
 (`placement: right`, `width: 380px`), `registerSettingsPage`, `PALETTE_AREA`. Poll
-`/api/plugins/sluice/status` every 5 s while visible; no websockets. UI kit components only,
+`/api/plugins/sluice-search-search/status` every 5 s while visible; no websockets. UI kit components only,
 theme variables only, no markup queries.
 
 **4. Demo target (T14).** `demo/fixture_server.py` serves deterministic cases: `/ok`
@@ -126,7 +126,7 @@ Files: `sluice/manage.py`, tests.
 ### T9: CLI
 Day 4. Depends on T3, T7, T8.
 Files: `sluice/cli.py` registered through `ctx.register_cli_command`.
-- `hermes sluice doctor`, `status`, `setup [--apply]`, `use search|extract`, `test
+- `hermes sluice-search doctor`, `status`, `setup [--apply]`, `use search|extract`, `test
   --backend <id> "<query>"`, `cache clear`, `install playwright|camofox|browserbase`.
 - `doctor` prints the twelve-backend inventory with free/paid and what is missing.
 - Done: every command runs unattended, exits non-zero on failure, prints the exact next command.
@@ -137,7 +137,7 @@ Files: `dashboard/plugin_api.py`, `dashboard/manifest.json`.
 - `GET /status`, `POST /probe`, `POST /test`, `POST /install`, `GET /jobs/{id}`,
   `POST /cache/clear`.
 - Thin wrapper importing `sluice.*`; JSON only, no SSE.
-- Done: routes mount at `/api/plugins/sluice/` after a gateway restart and answer under 300 ms
+- Done: routes mount at `/api/plugins/sluice-search-search/` after a gateway restart and answer under 300 ms
   with a warm store.
 
 ### T11: desktop pane

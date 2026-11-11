@@ -23,8 +23,12 @@ ENTRY = ROOT / "__init__.py"
 
 #: Hermes modules a plugin may import: documented plugin surfaces only. ``hermes_cli.config``
 #: is the public config module (``load_config_readonly``); ``agent.web_search_provider`` is the
-#: documented provider base plus ``get_provider_env``. Nothing else is needed.
-ALLOWED_HERMES_MODULES = frozenset({"hermes_cli.config", "agent.web_search_provider"})
+#: documented provider base plus ``get_provider_env``; ``tools.url_safety`` is the published
+#: URL-safety surface (``is_safe_url``, ``redirect_target_from_response``) the redirect-hop
+#: SSRF guard uses. Nothing else is needed.
+ALLOWED_HERMES_MODULES = frozenset(
+    {"hermes_cli.config", "agent.web_search_provider", "tools.url_safety"}
+)
 
 #: The private modules this finding was about. Named so the failure message says what broke.
 FORBIDDEN_MODULES = ("hermes_cli.plugins_settings", "hermes_cli.plugins_state",

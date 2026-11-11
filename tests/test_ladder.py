@@ -733,3 +733,47 @@ def test_chromium_stage_with_c_utf8_locale_against_fixture_server(extra_env, exp
 
 def test_retry_after_cap_is_below_the_router_budget():
     assert RETRY_AFTER_CAP_SECONDS <= 5.0
+
+
+# ── SSRF redirect-hop guard ────────────────────────────────────────────────
+
+
+def test_public_target_blocks_every_non_public_class():
+    from sluice.ladder import _is_public_http_target
+
+    blocked = [
+        "http://127.0.0.1/", "http://localhost/", "http://[::1]/",
+        "http://10.1.2.3/", "http://192.168.1.1/", "http://172.16.0.1/",
+        "http://0.0.0.0/", "http://100.64.0.1/", "http://169.254.169.254/",
+        "http://metadata.google.internal/", "ftp://93.184.216.34/",
+    ]
+    for url in blocked:
+        assert _is_public_http_target(url) is False, url
+    assert _is_public_http_target("http://93.184.216.34/") is True
+
+
+def test_http_redirect_to_private_address_is_blocked_by_the_hook():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/go" in str(request.url):
+            return httpx.Response(302, headers={"Location": "http://169.254.169.254/"})
+        return httpx.Response(200, text="<h1>ok</h1>")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    from sluice.ladder import http_stage
+
+    outcome = http_stage("http://example.com/go", client=client)
+    assert outcome.block_class == "error"
+    assert outcome.error and "SSRF guard" in outcome.error
+
+
+def test_http_redirect_to_public_address_is_followed():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/go" in str(request.url):
+            return httpx.Response(302, headers={"Location": "http://93.184.216.34/"})
+        return httpx.Response(200, text="<html><head><title>ok</title></head><body>hi</body></html>")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    from sluice.ladder import http_stage
+
+    outcome = http_stage("http://example.com/go", client=client)
+    assert outcome.block_class == "ok"

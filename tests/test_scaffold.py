@@ -1,7 +1,7 @@
 """Scaffold smoke tests (PLAN.md:43-54).
 
 Three things must hold at T1 and stay true as the tasks land: the package imports without
-Hermes, ``register(ctx)`` wires exactly one provider named ``sluice`` plus one CLI command,
+Hermes, ``register(ctx)`` wires exactly one provider named ``sluice-search`` plus one CLI command,
 and the CLI parser builds every subcommand the plan names.
 
 ``register()`` is exercised through the same loader shape Hermes uses — the repository-root
@@ -98,7 +98,7 @@ def test_provider_is_constructible_without_hermes():
     from sluice.provider import PROVIDER_NAME, SluiceWebSearchProvider
 
     provider = SluiceWebSearchProvider()
-    assert provider.name == PROVIDER_NAME == "sluice"
+    assert provider.name == PROVIDER_NAME == "sluice-search"
     assert provider.supports_search() is True
     assert provider.supports_extract() is True
 
@@ -152,15 +152,15 @@ def test_register_adds_one_web_provider(plugin_module):
 
     assert len(ctx.providers) == 1
     provider = ctx.providers[0]
-    assert provider.name == "sluice"
+    assert provider.name == "sluice-search"
     assert provider.supports_search() and provider.supports_extract()
 
 
-def test_register_adds_the_sluice_cli_command(plugin_module):
+def test_register_adds_the_sluice_search_cli_command(plugin_module):
     ctx = RecordingContext()
     plugin_module.register(ctx)
 
-    assert [cmd["name"] for cmd in ctx.cli_commands] == ["sluice"]
+    assert [cmd["name"] for cmd in ctx.cli_commands] == ["sluice-search"]
     command = ctx.cli_commands[0]
     assert callable(command["setup_fn"])
     assert callable(command["handler_fn"])
@@ -171,13 +171,13 @@ def test_register_adds_the_bundled_skill(plugin_module):
     ctx = RecordingContext()
     plugin_module.register(ctx)
 
-    assert [skill["name"] for skill in ctx.skills] == ["sluice"]
+    assert [skill["name"] for skill in ctx.skills] == ["sluice-search"]
     skill = ctx.skills[0]
     assert Path(skill["path"]).is_file()
     assert skill["path"].name == "SKILL.md"
     text = Path(skill["path"]).read_text(encoding="utf-8")
-    assert text.startswith("---\nname: sluice\n")
-    assert "hermes sluice doctor" in text
+    assert text.startswith("---\nname: sluice-search\n")
+    assert "hermes sluice-search doctor" in text
 
 
 def test_register_fails_loudly_without_the_provider_surface(plugin_module):
@@ -216,7 +216,7 @@ def test_cli_parser_accepts_every_planned_subcommand(argv):
     from sluice.cli import build_parser
 
     args = build_parser().parse_args(argv)
-    assert args.sluice_command == argv[0]
+    assert args.sluice_search_command == argv[0]
 
 
 def test_cli_rejects_unknown_subcommand_and_bad_install_target():
@@ -236,19 +236,19 @@ def test_cli_handler_runs_doctor_unattended(capsys, tmp_path, monkeypatch):
     args = build_parser().parse_args(["doctor"])
     assert handle_command(args) == 0
     out = capsys.readouterr().out
-    assert "Sluice" in out and "next: hermes sluice setup --apply" in out
+    assert "Sluice" in out and "next: hermes sluice-search setup --apply" in out
 
 
 def test_cli_setup_parser_attaches_to_a_foreign_parser():
-    """Hermes builds the ``hermes sluice`` parser itself and hands it to setup_fn."""
+    """Hermes builds the ``hermes sluice-search`` parser itself and hands it to setup_fn."""
     import argparse
 
     from sluice.cli import handle_command, setup_parser
 
-    parser = argparse.ArgumentParser(prog="hermes sluice")
+    parser = argparse.ArgumentParser(prog="hermes sluice-search")
     setup_parser(parser)
     args = parser.parse_args(["status"])
-    assert args.sluice_command == "status"
+    assert args.sluice_search_command == "status"
     assert args.func is handle_command
 
 
@@ -296,7 +296,7 @@ def _manifest_scalar(text: str, key: str) -> str | None:
 
 def test_manifest_required_fields():
     text = MANIFEST.read_text(encoding="utf-8")
-    assert _manifest_scalar(text, "name") == "sluice"
+    assert _manifest_scalar(text, "name") == "sluice-search"
     assert _manifest_scalar(text, "version") == '"1.0.0"'
     assert _manifest_scalar(text, "kind") == "backend"
     assert _manifest_scalar(text, "manifest_version") == "2"
@@ -314,7 +314,7 @@ def test_manifest_declares_all_ten_secrets():
 def test_manifest_declares_the_provider_and_python_dependencies():
     text = MANIFEST.read_text(encoding="utf-8")
     assert "provides_web_providers:" in text
-    assert "- sluice" in text
+    assert "- sluice-search" in text
     assert _manifest_scalar(text, "capabilities") == "[]"
     for dep in ("httpx>=0.27,<1", "trafilatura>=1.8,<3", "playwright>=1.45,<2", "ddgs>=9,<10"):
         assert f'"{dep}"' in text, dep
@@ -324,4 +324,4 @@ def test_pyproject_and_manifest_agree_on_versions():
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'version = "1.0.0"' in pyproject
     assert 'requires-python = ">=3.11"' in pyproject
-    assert 'sluice = "sluice.cli:main"' in pyproject
+    assert 'sluice-search = "sluice.cli:main"' in pyproject

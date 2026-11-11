@@ -10,7 +10,7 @@
 (function registerSluiceApiOnly() {
   var registry = window.__HERMES_PLUGINS__
   if (!registry || typeof registry.register !== 'function') return
-  registry.register('sluice', function SluiceApiOnly() {
+  registry.register('sluice-search', function SluiceApiOnly() {
     return null
   })
 })()

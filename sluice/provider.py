@@ -4,7 +4,7 @@ Three contracts meet in this file:
 
 * PLAN.md:53 — the provider class is the only thing ``register(ctx)`` wires besides the CLI
   command and the bundled skill.
-* DESIGN.md:126-134 — one provider named ``sluice``, advertising both search and extract;
+* DESIGN.md:126-134 — one provider named ``sluice-search``, advertising both search and extract;
   keys resolve through ``agent.secret_scope`` so profile multiplexing is respected, and no
   Hermes-internal provider module is imported.
 * DESIGN.md:68-72 — search returns ``{"success": True, "data": {"web": [...]}}``, extract
@@ -61,7 +61,7 @@ except ModuleNotFoundError as exc:  # standalone install / plain pytest
             return {"name": self.display_name or self.name, "badge": "", "tag": "", "env_vars": []}
 
 
-PROVIDER_NAME = "sluice"
+PROVIDER_NAME = "sluice-search"
 
 #: The ten credentials the manifest declares (PLAN.md:49-52). Env-var names, never values.
 SECRET_ENVS: tuple[str, ...] = (
@@ -201,11 +201,11 @@ class SluiceWebSearchProvider(_WebSearchProviderBase):
     def search(self, query: str, limit: int = 5) -> dict[str, Any]:
         """Return a failure envelope instead of raising across the provider boundary."""
         if not isinstance(query, str) or not query.strip():
-            return {"success": False, "error": "sluice: empty query"}
+            return {"success": False, "error": "sluice-search: empty query"}
         try:
             return self.router().search(query, limit)
         except Exception as exc:  # noqa: BLE001 - the tool layer never sees a traceback
-            return {"success": False, "error": f"sluice: search failed: {exc}"}
+            return {"success": False, "error": f"sluice-search: search failed: {exc}"}
 
     def extract(self, urls: list[str], **kwargs: Any) -> list[dict[str, Any]]:
         """Per-URL failure items; one bad URL must never fail the batch (DESIGN.md:68-72)."""
@@ -213,4 +213,4 @@ class SluiceWebSearchProvider(_WebSearchProviderBase):
         try:
             return self.router().extract(targets, **kwargs)
         except Exception as exc:  # noqa: BLE001
-            return [{"url": url, "error": f"sluice: extract failed: {exc}"} for url in targets]
+            return [{"url": url, "error": f"sluice-search: extract failed: {exc}"} for url in targets]

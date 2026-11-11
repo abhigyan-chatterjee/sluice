@@ -700,7 +700,7 @@ function SettingsPage({ ctx }) {
 }
 
 export default {
-  id: 'sluice',
+  id: 'sluice-search',
   name: 'Sluice',
   register(ctx) {
     ctx.register({
@@ -734,7 +734,7 @@ export default {
         id: 'probe',
         area: PALETTE_AREA,
         data: {
-          id: 'sluice.probe',
+          id: 'sluice-search.probe',
           label: 'Sluice: probe backends',
           keywords: ['sluice', 'probe', 'backend', 'health'],
           run: async () => {
@@ -748,7 +748,7 @@ export default {
         id: 'test',
         area: PALETTE_AREA,
         data: {
-          id: 'sluice.test',
+          id: 'sluice-search.test',
           label: 'Sluice: test query',
           keywords: ['sluice', 'test', 'query', 'search'],
           run: async () => {
@@ -765,7 +765,7 @@ export default {
         id: 'clear-cache',
         area: PALETTE_AREA,
         data: {
-          id: 'sluice.cache.clear',
+          id: 'sluice-search.cache.clear',
           label: 'Sluice: clear cache',
           keywords: ['sluice', 'cache', 'clear'],
           run: async () => {

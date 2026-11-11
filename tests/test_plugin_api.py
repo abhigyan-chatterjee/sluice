@@ -264,7 +264,7 @@ def test_install_playwright_returns_a_job(env, monkeypatch):
             "job": {"id": "j1", "status": "queued"},
             "commands": [["python", "-m", "playwright", "install", "chromium"]],
             "note": "",
-            "next": "hermes sluice install camofox",
+            "next": "hermes sluice-search install camofox",
         },
     )
     result = api.install_payload("playwright", settings=env["settings"], state=env["store"])
@@ -339,7 +339,7 @@ def test_save_settings_refuses_a_plan_key_that_is_not_declared(env):
     """Only the ``plan_settings()`` keys are exempt from the editable-key allowlist.
 
     A ``plan_`` prefix used to be enough, so ``plan_nonsense`` was written into
-    ``plugins.entries.sluice.settings`` where nothing reads it.
+    ``plugins.entries.sluice-search.settings`` where nothing reads it.
     """
     written: list[dict] = []
     result = api.save_settings_payload(
@@ -414,7 +414,7 @@ def test_save_settings_still_writes_an_empty_or_usable_searxng_url(env):
 
 
 def test_test_payload_answers_a_refused_searxng_address_instead_of_raising(env):
-    """``api.test_payload`` backs ``hermes sluice test``; a refused address is a payload."""
+    """``api.test_payload`` backs ``hermes sluice-search test``; a refused address is a payload."""
     from sluice.config import normalize_searxng_url
 
     for raw in ("http://ho\u200bst:8888", "http://127.0.0.1:1/" + "a" * (1024 * 1024)):
@@ -434,8 +434,8 @@ def test_setup_dry_run_lists_three_routes(env, monkeypatch):
             {"key": key, "value": value, "command": ["hermes", "config", "set", key, value],
              "applied": apply, "ok": None, "returncode": None, "output": "", "error": None}
             for key, value in (
-                ("web.search_backend", "sluice"),
-                ("web.extract_backend", "sluice"),
+                ("web.search_backend", "sluice-search"),
+                ("web.extract_backend", "sluice-search"),
                 ("web.cache_enabled", "false"),
             )
         ]
@@ -456,19 +456,19 @@ def test_router_mounts_every_route(env):
     from dashboard import plugin_api
 
     app = fastapi.FastAPI()
-    app.include_router(plugin_api.router, prefix="/api/plugins/sluice")
+    app.include_router(plugin_api.router, prefix="/api/plugins/sluice-search-search")
     client = client_mod.TestClient(app)
 
-    response = client.get("/api/plugins/sluice/status")
+    response = client.get("/api/plugins/sluice-search-search/status")
     assert response.status_code == 200
     assert response.json()["plugin"] == "sluice"
 
-    assert client.get("/api/plugins/sluice/jobs/nope").json()["status"] == 404
-    assert client.post("/api/plugins/sluice/test", json={}).json()["ok"] is False
-    assert client.post("/api/plugins/sluice/install", json={"target": "chrome"}).json()["ok"] is False
-    assert client.get("/api/plugins/sluice/settings").json()["ok"] is True
-    assert client.post("/api/plugins/sluice/cache/clear").json()["ok"] is True
-    assert client.post("/api/plugins/sluice/setup", json={}).json()["applied"] is False
+    assert client.get("/api/plugins/sluice-search-search/jobs/nope").json()["status"] == 404
+    assert client.post("/api/plugins/sluice-search-search/test", json={}).json()["ok"] is False
+    assert client.post("/api/plugins/sluice-search-search/install", json={"target": "chrome"}).json()["ok"] is False
+    assert client.get("/api/plugins/sluice-search-search/settings").json()["ok"] is True
+    assert client.post("/api/plugins/sluice-search-search/cache/clear").json()["ok"] is True
+    assert client.post("/api/plugins/sluice-search-search/setup", json={}).json()["applied"] is False
 
 
 def test_router_folds_a_handler_exception_into_json(env):
@@ -483,8 +483,8 @@ def test_router_folds_a_handler_exception_into_json(env):
     plugin_api.api.status_payload = boom
     try:
         app = fastapi.FastAPI()
-        app.include_router(plugin_api.router, prefix="/api/plugins/sluice")
-        response = client_mod.TestClient(app).get("/api/plugins/sluice/status")
+        app.include_router(plugin_api.router, prefix="/api/plugins/sluice-search-search")
+        response = client_mod.TestClient(app).get("/api/plugins/sluice-search-search/status")
     finally:
         plugin_api.api.status_payload = original
     assert response.status_code == 200
@@ -553,14 +553,14 @@ def test_router_never_answers_a_malformed_test_body_with_a_500(env, monkeypatch)
 
     monkeypatch.setattr(api, "Router", FakeRouter)
     app = fastapi.FastAPI()
-    app.include_router(plugin_api.router, prefix="/api/plugins/sluice")
+    app.include_router(plugin_api.router, prefix="/api/plugins/sluice-search-search")
     client = client_mod.TestClient(app, raise_server_exceptions=False)
 
-    bad_limit = client.post("/api/plugins/sluice/test", json={"query": "q", "limit": "bad"})
+    bad_limit = client.post("/api/plugins/sluice-search-search/test", json={"query": "q", "limit": "bad"})
     assert bad_limit.status_code == 200
     assert bad_limit.json()["ok"] is True
 
-    non_string = client.post("/api/plugins/sluice/test", json={"query": 123})
+    non_string = client.post("/api/plugins/sluice-search-search/test", json={"query": 123})
     assert non_string.status_code == 200
     assert non_string.json()["ok"] is False
     assert "non-empty string" in non_string.json()["error"]

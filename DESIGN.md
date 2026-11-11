@@ -26,7 +26,7 @@ cannot see.
 - Search cache and extract cache with TTLs and a size cap.
 - A local-only extract ladder: plain HTTP plus readability, real Chromium, Camofox, with a
   block classifier deciding when to climb and when to stop.
-- One control surface: `hermes sluice` CLI plus a Hermes Desktop pane.
+- One control surface: `hermes sluice-search` CLI plus a Hermes Desktop pane.
 - Unattended-safe: no prompts that hang cron or gateway runs; failures are clean and
   reported.
 
@@ -79,7 +79,7 @@ Each of these was checked against the installed source (v0.22.6), not assumed:
    20 minutes by default (`web.cache_ttl_minutes`; `web.cache_enabled: false` disables).
    Sluice's own cache never sees a repeat inside that window. Setup therefore turns the
    outer cache off when Sluice owns the backend, so one tier-aware cache and one TTL
-   govern, and `hermes sluice cache clear` clears `cache/web` too.
+   govern, and `hermes sluice-search cache clear` clears `cache/web` too.
 6. Availability gating: `check_web_api_key()` lights the native tools when the configured
    or active provider reports `is_available()` or, through `_provider_is_ready`,
    `is_keyless_available()`. Sluice returns True from `is_available()` when any keyed
@@ -94,11 +94,11 @@ Each of these was checked against the installed source (v0.22.6), not assumed:
 8. SearXNG disables JSON output by default; `settings.yml` needs `search.formats: [html,
    json]`. The compose file Sluice ships must include that.
 9. The Desktop SDK accepts a unified package at
-   `$HERMES_HOME/plugins/sluice/desktop/plugin.js`, plain ESM, importing only
+   `$HERMES_HOME/plugins/sluice-search/desktop/plugin.js`, plain ESM, importing only
    `@hermes/plugin-sdk`, `react` and `react/jsx-runtime`. The backend must live at
    `dashboard/plugin_api.py` with `dashboard/manifest.json` naming it, because Hermes
    rejects any `api` path that resolves outside `dashboard/`. The pane reaches it at
-   `/api/plugins/sluice/`.
+   `/api/plugins/sluice-search-search/`.
 10. There is no plugin or CLI route that writes a web API key. `hermes auth` is for
     inference credentials and `hermes secrets` is for external vaults. Keys reach Sluice
     through the `config_schema` secret fields in Settings ▸ Plugins, written by Hermes'
@@ -156,7 +156,7 @@ keenable, parallel, perplexity, tavily, xai) plus DeepSeek and TinyFish by reque
 No per-call pinning in v1. The native tool signatures (`web_search(query, limit)`,
 `web_extract(urls, char_limit)`) have no slot for a backend argument, and a query-prefix
 operator would collide with real search syntax. Pinning lives in settings and in
-`hermes sluice test --backend <id> "<query>"`.
+`hermes sluice-search test --backend <id> "<query>"`.
 
 Free versus paid is a property of the backend entry, not of the credential. Exa, Tavily
 and Firecrawl use one key whether the account sits on a free allowance or a paid plan, and
@@ -214,7 +214,7 @@ week (604800 s). `domain_memory` stores `(domain, block_class, stage_that_worked
 with a 24 hour (86400 s) TTL, so a site that always challenges starts at the browser rung next time.
 
 The outer Hermes cache is turned off during setup (`web.cache_enabled: false`) so there is
-exactly one cache with one TTL; `hermes sluice cache clear` clears both anyway.
+exactly one cache with one TTL; `hermes sluice-search cache clear` clears both anyway.
 
 ### Manager
 
@@ -228,10 +228,10 @@ first-run banner that downloads Camoufox stated up front. Long installs run as j
 `dashboard/plugin_api.py`; the pane polls job status instead of holding a request open.
 
 Toggling Camofox on when it is not installed fails loudly, never silently: the pane and
-`hermes sluice doctor` name what is missing (the `camofox` plugin, the Node server, the
+`hermes sluice-search doctor` name what is missing (the `camofox` plugin, the Node server, the
 Camoufox download) and the exact command for each, with a button that runs it.
 
-Switch: `hermes config set web.search_backend sluice` and the extract equivalent, run
+Switch: `hermes config set web.search_backend sluice-search` and the extract equivalent, run
 through the CLI with the active profile's environment and a short timeout. Browser
 selection is explained, not forced: camofox is a plugin plus a server, Browserbase is a
 key, local Chromium is the default.
@@ -276,7 +276,7 @@ through `dashboard/plugin_api.py`; the pane holds no secrets and never reads app
 
 ## Demo plan (under 90 seconds)
 
-`hermes sluice doctor` shows the twelve-backend inventory and which ones are free. A live
+`hermes sluice-search doctor` shows the twelve-backend inventory and which ones are free. A live
 query comes back with `backend` and `tier` in the row metadata. A forced quota failure on
 the top backend falls through to the next one in the same request. A challenged page shows
 the classifier naming the vendor, then the ladder climbing to Chromium or Camofox and
@@ -296,7 +296,7 @@ Close on the tier list.
 - Routing is sequential; parallel fan-out is a later improvement.
 - Camofox installs and starts only on an explicit user command, and a toggle without an
   install must say exactly what is missing.
-- Dogfood it: switch Abhi's own `web.search_backend` to sluice once routing works.
+- Dogfood it: switch Abhi's own `web.search_backend` to sluice-search once routing works.
 - No CAPTCHA, paywall or login circumvention; the real profile is used only when the user
   turns it on.
 - Stage 1 identifies itself honestly as `Sluice/1.0`.

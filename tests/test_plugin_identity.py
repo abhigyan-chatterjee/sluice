@@ -5,7 +5,7 @@ the package ``__path__`` (``hermes_cli/plugins_loader._load_directory_module`` a
 ``hermes_cli/plugin_host_child._import_plugin``), and mounts the dashboard wrapper by file
 path (``web_server_dashboard._mount_one_plugin_api`` / ``plugin_host_child.op_asgi``). The
 two import ``sluice/hostctx.py`` under different module names — ``register()``'s relative
-import lands on ``hermes_plugins.sluice.sluice.hostctx``, a bare ``from sluice import api``
+import lands on ``hermes_plugins.sluice_search.sluice.hostctx``, a bare ``from sluice import api``
 on ``sluice.hostctx`` — so a context held in module globals is parked in one copy and read
 from the other. That shipped once: the plugin was loaded and registered while every
 ``POST /settings`` answered "no Hermes plugin context".
@@ -29,8 +29,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 #: The names both Hermes loaders assign (``_directory_module_name`` / ``op_asgi``).
-ENTRY_MODULE = "hermes_plugins.sluice"
-DASHBOARD_MODULE = "hermes_dashboard_plugin_sluice"
+ENTRY_MODULE = "hermes_plugins.sluice_search"
+DASHBOARD_MODULE = "hermes_dashboard_plugin_sluice-search"
 
 
 class RecordingContext:
@@ -98,7 +98,7 @@ def _is_mount_module(name: str) -> bool:
 def _fresh_mount() -> Iterator[None]:
     """Every test mounts from scratch; the interpreter is left as it was found.
 
-    ``tests/test_backends.py`` imports ``hermes_plugins.sluice.sluice.backends.ddgs`` and
+    ``tests/test_backends.py`` imports ``hermes_plugins.sluice_search.sluice.backends.ddgs`` and
     leaves that namespace behind, so the host copy has to be evicted up front too — a test
     about which module the wrapper binds must not inherit another test's mount.
     """
@@ -118,7 +118,7 @@ def _fresh_mount() -> Iterator[None]:
 
 
 def test_a_settings_write_from_the_dashboard_reaches_the_context_register_parked():
-    """The whole handoff: entry loaded as ``hermes_plugins.sluice``, wrapper mounted by path."""
+    """The whole handoff: entry loaded as ``hermes_plugins.sluice_search``, wrapper mounted by path."""
     entry = _load_entry()
     ctx = RecordingContext()
     entry.register(ctx)

@@ -295,6 +295,18 @@ def test_ddgs_child_env_prepends_the_repo_root_to_pythonpath(monkeypatch):
     assert entries[:2] == [repo_root, "/somewhere/else"]
 
 
+def test_ddgs_child_env_does_not_leak_provider_keys(monkeypatch):
+    """Only allowlisted keys reach the worker; provider credentials stay in the parent."""
+    from sluice.backends import ddgs as ddgs_module
+
+    monkeypatch.setenv("EXA_API_KEY", "test-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-secret")
+    env = ddgs_module._child_env()
+    assert "EXA_API_KEY" not in env
+    assert "OPENAI_API_KEY" not in env
+    assert set(env) <= set(ddgs_module._CHILD_ENV_KEYS)
+
+
 def test_ddgs_search_works_under_the_hermes_plugins_loader(monkeypatch):
     """F1: the child must never have to import the loader's synthetic ``hermes_plugins``."""
     module = _load_ddgs_as_hermes_plugin()
@@ -429,15 +441,15 @@ def test_ddgs_failure_is_not_silent_and_surfaces_in_store_and_desktop_status(mon
 
 
 def _load_ddgs_as_hermes_plugin():
-    """Import ``ddgs.py`` as ``hermes_plugins.sluice.sluice.backends.ddgs``.
+    """Import ``ddgs.py`` as ``hermes_plugins.sluice_search.sluice.backends.ddgs``.
 
     Mirrors ``hermes_cli/plugins_loader.py:_load_directory_module``: the plugin directory is
-    the package path of ``hermes_plugins.sluice``, and ``hermes_plugins`` exists only as an
+    the package path of ``hermes_plugins.sluice_search``, and ``hermes_plugins`` exists only as an
     empty namespace package in this process' ``sys.modules`` — exactly the name a spawned
     child could not import before F1 was fixed.
     """
     repo = Path(__file__).resolve().parents[1]
-    name = "hermes_plugins.sluice"
+    name = "hermes_plugins.sluice_search"
     namespace = types.ModuleType("hermes_plugins")
     namespace.__path__ = []  # type: ignore[attr-defined]
     namespace.__package__ = "hermes_plugins"

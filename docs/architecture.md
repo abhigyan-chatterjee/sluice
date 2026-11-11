@@ -33,7 +33,7 @@ Hermes tool layer
 
 | File | Job |
 |---|---|
-| `__init__.py` | `register(ctx)`: provider, `hermes sluice` command tree, bundled skill. All imports are function-local so the validation probe can import the file without Hermes. |
+| `__init__.py` | `register(ctx)`: provider, `hermes sluice-search` command tree, bundled skill. All imports are function-local so the validation probe can import the file without Hermes. |
 | `sluice/provider.py` | The single `WebSearchProvider` named `sluice`. Capability flags, availability, lazy router and store construction, failure envelopes. |
 | `sluice/config.py` | Runtime view of `plugin.yaml` `config_schema`: defaults, saved settings, credentials, tier normalization, plugin data directory. |
 | `sluice/router.py` | Tier policy, candidate ordering, budgets, fallback, cache keys, winner metadata. |
@@ -42,9 +42,9 @@ Hermes tool layer
 | `sluice/ladder.py` | Nine-class block classifier, robots and policy checks, the three-stage fetch ladder. |
 | `sluice/store.py` | SQLite store: `backend_state`, `usage`, `cache`, `domain_memory`, `jobs`, plus internal `meta`. WAL, one connection, re-entrant lock, no ORM. |
 | `sluice/manage.py` | Detection and install jobs for the browser engines, the `hermes config set` route, outer cache clearing. |
-| `sluice/cli.py` | The seven `hermes sluice` subcommands and the standalone `sluice` console script. |
+| `sluice/cli.py` | The seven `hermes sluice-search` subcommands and the standalone `sluice` console script. |
 | `sluice/api.py` | Dashboard behaviour with no web framework in it: status, probe, test, install, jobs, cache, settings, setup. |
-| `dashboard/plugin_api.py` | FastAPI wrapper mounted at `/api/plugins/sluice/`. Thin handlers around `sluice.api`, each wrapped in `_safe`. |
+| `dashboard/plugin_api.py` | FastAPI wrapper mounted at `/api/plugins/sluice-search-search/`. Thin handlers around `sluice.api`, each wrapped in `_safe`. |
 | `dashboard/manifest.json` | Declares `entry: dist/index.js` and `api: plugin_api.py`; `tab.hidden: true` because the pane is the UI. |
 | `dashboard/dist/index.js` | Dashboard loader hook (`registry.register('sluice', ...)`); no tab. |
 | `desktop/plugin.js` | Desktop pane, settings page, three palette commands. Plain ESM, imports only the SDK and React. |
@@ -140,7 +140,7 @@ Cache writes go through `Store.cache_put`, which also runs eviction. Cache reads
 ## Extract path, ingestion to result
 
 Extraction is local only. The router never calls a vendor extract endpoint; those adapters
-exist for `hermes sluice test --backend <id>` and for probes.
+exist for `hermes sluice-search test --backend <id>` and for probes.
 
 1. `Router.extract` loops the URLs and calls `_extract_one` per URL.
 2. Cache lookup in `extract` and `extract:negative`, keyed by URL and format. A negative hit
@@ -201,7 +201,7 @@ Chromium instead of repeating the HTTP rung.
 ## State
 
 `sluice/store.py` owns one SQLite file, `sluice.db`, in the plugin data directory
-(`ctx.plugin_data_dir()`, normally `~/.hermes/plugin-data/sluice/sluice.db`).
+(`ctx.plugin_data_dir()`, normally `~/.hermes/plugin-data/sluice-search/sluice.db`).
 
 | Table | Holds | Written by |
 |---|---|---|
@@ -239,9 +239,9 @@ exponential backoff. A success resets both.
 | `tools/web_tools_truncate._trim_results` | worked around in `sluice/ladder.py` | The wrapper strips every extract key except `url`, `title`, `content`, `error`, `blocked_by_policy`. Sluice puts the block class and final stage in one header line at the top of `content`; the full chain stays in `stages` for the pane and the API. Search rows are not trimmed, so `backend` and `tier` survive as extra row keys. |
 | `tools/web_result_cache` | `sluice/manage.py`, `sluice/cli.py` | Hermes' outer cache (20 minutes by default). `setup --apply` turns it off so one tier-aware cache governs; `cache clear` clears `cache/web` as well as the SQLite cache. |
 | `dashboard/manifest.json` | whole file | Declares `api: plugin_api.py` (Hermes rejects an API path outside `dashboard/`) and `entry: dist/index.js` for the loader. `tab.hidden: true`: the pane is the UI. |
-| `dashboard/plugin_api.py` | `/api/plugins/sluice/` | Routes: `GET /status`, `POST /probe`, `POST /test`, `POST /install`, `GET /jobs/{id}`, `POST /cache/clear`, plus `GET/POST /settings` and `POST /setup` for the pane. Every handler is wrapped in `_safe`, so a failure is a JSON body, not a 500. |
+| `dashboard/plugin_api.py` | `/api/plugins/sluice-search-search/` | Routes: `GET /status`, `POST /probe`, `POST /test`, `POST /install`, `GET /jobs/{id}`, `POST /cache/clear`, plus `GET/POST /settings` and `POST /setup` for the pane. Every handler is wrapped in `_safe`, so a failure is a JSON body, not a 500. |
 | `desktop/plugin.js` | default export `{id, name, register(ctx)}` | `ctx.register({area: PANES_AREA, data: {placement: 'right', width: '380px'}})` for the pane; `ctx.registerSettingsPage` for the settings page; three commands under `PALETTE_AREA`: `sluice.probe`, `sluice.test`, `sluice.cache.clear`. Polls `/status` every 5 s while visible (`POLL_MS`) and holds no secret, no `eval`, no DOM markup queries. |
-| `ctx.register_cli_command` | `__init__.py` | Registers `sluice` with `setup_fn`/`handler_fn`, which is how `hermes sluice <command>` reaches `sluice/cli.py`. |
+| `ctx.register_cli_command` | `__init__.py` | Registers `sluice` with `setup_fn`/`handler_fn`, which is how `hermes sluice-search <command>` reaches `sluice/cli.py`. |
 | `ctx.register_skill` | `__init__.py` | Registers `skills/sluice/SKILL.md` when the host supports it. Optional: a missing skill file must not stop the provider from loading. |
 
 ## Extension points
@@ -264,7 +264,7 @@ exponential backoff. A success resets both.
    exactly ten `type: secret` fields, `tests/test_config.py` asserts manifest defaults match
    `DEFAULTS`, and adapter behaviour belongs in `tests/test_backends.py`.
 
-`hermes sluice doctor`, the pane and `/status` all read `specs()`, so a registered adapter
+`hermes sluice-search doctor`, the pane and `/status` all read `specs()`, so a registered adapter
 appears in every surface without further wiring.
 
 ### Extend the ladder
@@ -302,7 +302,7 @@ Not in this release:
   starts it for you.
 - CAPTCHA solving, paywall or login circumvention.
 - Per-call backend pinning in `web_search(query, limit)` or `web_extract(urls, char_limit)`.
-  The native signatures have no slot for it; pinning is `hermes sluice test --backend <id>`.
+  The native signatures have no slot for it; pinning is `hermes sluice-search test --backend <id>`.
 
 ## Directory-plugin namespace
 

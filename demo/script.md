@@ -11,25 +11,25 @@ Setup before recording (off camera):
 
 ```sh
 python demo/fixture_server.py --port 8765 &
-hermes sluice doctor > /dev/null        # warm the read path
+hermes sluice-search doctor > /dev/null        # warm the read path
 ```
 
 ## Beats
 
 **1 — the inventory.**
-`hermes sluice doctor`
+`hermes sluice-search doctor`
 Twelve backends, tier order, keyless on, and a `next:` command under every gap.
 
 **2 — a real search names its backend.**
-`hermes sluice test --backend ddgs 'python asyncio tutorial'`
+`hermes sluice-search test --backend ddgs 'python asyncio tutorial'`
 The result line carries the backend, the tier and the latency it took.
 
 **3 — the same query on a different tier.**
-`hermes sluice test --backend exa 'python asyncio tutorial'`
+`hermes sluice-search test --backend exa 'python asyncio tutorial'`
 Identical contract, different backend: the caller does not care which rung answered.
 
 **4 — persisted health, latency and spend.**
-`hermes sluice status`
+`hermes sluice-search status`
 Per-backend health, p50 and EMA latency, call counts and spend, read back from the store
 rather than held in memory.
 
@@ -55,6 +55,6 @@ and prints PASS or FAIL per claim. Run it before submitting.
   shows the `cf-mitigated: challenge` header the classifier keys on; the fixture is correct,
   the recording box may be rewriting headers.
 - Playwright not installed: the ladder stops at the HTTP stage and the provenance line says
-  `status=challenge`. Run `hermes sluice install playwright` and re-record.
+  `status=challenge`. Run `hermes sluice-search install playwright` and re-record.
 - ddgs answers `No results found`: it fans out across public engines and rate-limits
   intermittently. Retry the beat; it is upstream, not the plugin.

@@ -142,8 +142,8 @@ the setting is empty:
 ```sh
 SEARXNG_URL=http://127.0.0.1:8080 .venv/bin/sluice doctor
 # searxng      local    paid  n/a      ready
-hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8080
-hermes sluice test --backend searxng --limit 2 "sqlite wal"
+hermes config set plugins.entries.sluice-search.settings.searxng_url http://127.0.0.1:8080
+hermes sluice-search test --backend searxng --limit 2 "sqlite wal"
 ```
 
 ```
@@ -248,11 +248,11 @@ To test the installed-plugin path instead, install from a scratch Hermes home:
 ```sh
 hermes plugins install sluice-search --no-deps --enable
 hermes plugins enable sluice
-hermes sluice doctor
+hermes sluice-search doctor
 ```
 
 `--no-deps` keeps the install unattended and leaves the plugin disabled; the explicit
-`enable` turns it on without a dependency prompt. `hermes sluice doctor` then prints the
+`enable` turns it on without a dependency prompt. `hermes sluice-search doctor` then prints the
 same twelve-row table as the standalone run.
 
 ## Cutting a release

@@ -87,16 +87,16 @@ Sluice provides a drop-in replacement for Hermes search and extract providers, u
 
 ### Installation & Activation
 ```bash
-# Install plugin from the catalog (key is sluice-search: an unrelated plugin already
-# owns the `sluice` name upstream; the plugin itself installs and enables as `sluice`)
+# Install plugin from the catalog (the plugin is named sluice-search:
+# an unrelated plugin already owns the `sluice` name upstream)
 hermes plugins install sluice-search
 
 # Or install straight from the repository
 hermes plugins install https://github.com/abhigyan-chatterjee/sluice
 
 # Switch Hermes search and extract providers to Sluice
-hermes config set web.search_backend sluice
-hermes config set web.extract_backend sluice
+hermes config set web.search_backend sluice-search
+hermes config set web.extract_backend sluice-search
 
 # (Optional) Install Playwright Chromium for local Stage 2 extraction
 .venv/bin/sluice install playwright
@@ -127,7 +127,7 @@ done; the catalog PR is open; the Typeform is the remaining step.
     post URL. See `submission/typeform.md` for the full field list.
 - [x] **Open Upstream Catalog Pull Request** — done:
   - PR: `https://github.com/NousResearch/hermes-agent/pull/152754`
-  - Entry file: `submission/plugin-catalog-sluice.yaml`, catalog key `sluice-search`.
+  - Entry file: `submission/plugin-catalog-sluice-search.yaml`, catalog key `sluice-search`.
   - Pin: `b40e6b97601b715175fb656513ce84195bc4de8b`. Re-check against the tip of `main` at
     submit time; a moved tip needs a re-pin PR, not an edit to this one.
 - [x] **Submit Typeform** — done. `https://form.typeform.com/to/FwJLvOln` returned
@@ -140,7 +140,7 @@ done; the catalog PR is open; the Typeform is the remaining step.
 
 | Field | Pre-filled Value | Notes / Source |
 |---|---|---|
-| **Plugin Name** | `sluice` (catalog key: `sluice-search`) | `plugin.yaml:1`. The catalog key cannot be `sluice`: an unrelated plugin already owns `plugin-catalog/sluice.yaml` upstream (orjinameh/airlock). The plugin still installs and enables as `sluice`. |
+| **Plugin Name** | `sluice-search` | `plugin.yaml:1`. The name cannot be `sluice`: an unrelated plugin already owns `plugin-catalog/sluice.yaml` upstream (orjinameh/airlock), and Hermes names the install folder and settings key from the manifest name. The display title stays `Sluice`. |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
 | **Pinned Commit SHA** | `b40e6b97601b715175fb656513ce84195bc4de8b` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |

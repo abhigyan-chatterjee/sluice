@@ -9,7 +9,7 @@ kills after a hard 12 s wall clock.
 
 The child is a ``subprocess`` running a ``-c`` script, not a ``multiprocessing`` spawn. A
 spawned child unpickles the worker by module name; when Hermes loads this file as the
-directory plugin ``hermes_plugins.sluice.sluice.backends.ddgs`` that name does not exist in
+directory plugin ``hermes_plugins.sluice_search.sluice.backends.ddgs`` that name does not exist in
 a fresh interpreter (``hermes_plugins`` is a synthetic package), so the child died with
 ``ModuleNotFoundError`` before running a query. A ``-c`` script imports nothing from the
 loader namespace: it reads a JSON request on stdin, imports ``ddgs`` plus one helper from
@@ -98,11 +98,31 @@ main()
 """
 
 
+#: Env keys the worker child may inherit. Provider credentials and every
+#: other agent secret stay in the parent; the worker needs only to launch
+#: the interpreter, import the declared packages and reach the network.
+_CHILD_ENV_KEYS: tuple[str, ...] = (
+    "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "PYTHONPATH",
+    "SYSTEMROOT", "TMPDIR", "TEMP", "TMP",
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+)
+
+
+def _minimal_env() -> dict[str, str]:
+    """Only allowlisted keys from the parent environment."""
+    return {key: os.environ[key] for key in _CHILD_ENV_KEYS if key in os.environ}
+
+
 def _child_env() -> dict[str, str]:
-    """The parent environment with this checkout's root first on ``PYTHONPATH``.
+    """A minimal environment with this checkout's root first on ``PYTHONPATH``.
+
+    Only allowlisted keys are inherited (PATH, HOME, locale, PYTHONPATH and the
+    proxy variables), so provider API keys and agent credentials in the parent
+    environment never reach the worker.
 
     ``Path(__file__).resolve().parents[2]`` is the repository root both for a git checkout
-    and for ``~/.hermes/plugins/sluice``; the child needs it to import ``search_row`` from
+    and for ``~/.hermes/plugins/sluice-search``; the child needs it to import ``search_row`` from
     the same copy of Sluice that started it.
 
     The interpreter is the same ``sys.executable``, but Hermes starts it with ``-I`` and
@@ -112,7 +132,7 @@ def _child_env() -> dict[str, str]:
     ``ModuleNotFoundError`` even though the parent imported it fine. The parent's own
     ``sys.path`` entries are appended after the root so the child sees the same packages.
     """
-    env = dict(os.environ)
+    env = _minimal_env()
     root = str(Path(__file__).resolve().parents[2])
     entries = [entry for entry in (env.get("PYTHONPATH") or "").split(os.pathsep) if entry]
     entries = [entry for entry in entries if entry != root]

@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from html import unescape
 from typing import Any, Callable, Iterable, Mapping, Sequence
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from .store import NS_ROBOTS, Store
 
@@ -328,11 +328,179 @@ def robots_allowed(
     return False, pattern
 
 
-def _fetch_robots(origin: str, client: Any) -> tuple[int, str]:
+#: Hostnames that are always non-public, even when private URLs are allowed.
+_BLOCKED_HOSTNAMES = frozenset({"metadata.google.internal", "metadata.goog"})
+
+
+def _is_public_http_target(url: str) -> bool:
+    """True if ``url`` is an http(s) URL whose host resolves to a public address.
+
+    Redirect-hop and navigation guard for the ladder's own fetches: Hermes
+    already refuses a private requested URL, but a public URL can redirect (or,
+    in Chromium, navigate) to a LAN or cloud metadata address afterwards.
+    Prefers Hermes' ``tools.url_safety.is_safe_url`` when running inside
+    Hermes; the stdlib fallback checks the same classes (private, loopback,
+    link-local including 169.254.169.254, reserved, multicast, unspecified
+    and 100.64/10 CGNAT) and fails closed on DNS errors.
+    """
+    try:
+        from tools.url_safety import is_safe_url as _hermes_is_safe_url  # type: ignore
+
+        return bool(_hermes_is_safe_url(url))
+    except ImportError:
+        pass
+    except Exception:  # noqa: BLE001 - a broken safety import must not open the gate
+        return False
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = (parsed.hostname or "").lower()
+        if not hostname or hostname in _BLOCKED_HOSTNAMES:
+            return False
+        if hostname in ("localhost",):
+            return False
+        import ipaddress
+        import socket
+
+        # A literal IP needs no DNS.
+        try:
+            ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            ip = None
+        if ip is not None:
+            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+                ip = ip.ipv4_mapped
+            return _is_global_ip(ip)
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+        except Exception:  # noqa: BLE001 - fail closed on DNS errors
+            return False
+        for info in infos:
+            sockaddr = info[4]
+            if not sockaddr:
+                return False
+            try:
+                resolved = ipaddress.ip_address(sockaddr[0])
+            except ValueError:
+                return False
+            if isinstance(resolved, ipaddress.IPv6Address) and resolved.ipv4_mapped is not None:
+                resolved = resolved.ipv4_mapped
+            if not _is_global_ip(resolved):
+                return False
+        return bool(infos)
+    except Exception:  # noqa: BLE001 - parsing edge cases fail closed
+        return False
+
+
+def _is_global_ip(ip: Any) -> bool:
+    """True only for a globally routable address (stdlib complement of the allowlist)."""
+    if getattr(ip, "is_unspecified", False) or getattr(ip, "is_loopback", False):
+        return False
+    if getattr(ip, "is_private", False) and getattr(ip, "is_global", True) is False:
+        # Plain is_private covers CGNAT-adjacent ranges on newer Pythons; the
+        # explicit 100.64/10 check below keeps the floor stable across versions.
+        return False
+    if getattr(ip, "is_link_local", False) or getattr(ip, "is_multicast", False):
+        return False
+    if getattr(ip, "is_reserved", False):
+        return False
+    if getattr(ip, "is_global", True) is False:
+        return False
+    try:
+        import ipaddress
+
+        if ip in ipaddress.ip_network("100.64.0.0/10"):
+            return False
+        if ip in ipaddress.ip_network("169.254.0.0/16"):
+            return False
+    except Exception:  # noqa: BLE001 - a failed range check fails closed
+        return False
+    return True
+
+
+def _redirect_target_from_response(response: Any) -> str | None:
+    """The redirect target visible from inside an httpx response hook."""
+    try:
+        from tools.url_safety import redirect_target_from_response as _hermes_target  # type: ignore
+
+        target = _hermes_target(response)
+        if target:
+            return str(target)
+    except ImportError:
+        pass
+    except Exception:  # noqa: BLE001 - fall through to the local resolver
+        pass
+    if not getattr(response, "is_redirect", False):
+        return None
+    location = (getattr(response, "headers", {}) or {}).get("location")
+    if location:
+        return urljoin(str(getattr(response, "url", "")), str(location))
+    next_request = getattr(response, "next_request", None)
+    return str(next_request.url) if next_request else None
+
+
+def _ssrf_response_hook(response: Any) -> None:
+    """httpx ``response`` event hook: refuse a redirect to a non-public target.
+
+    httpx fires response hooks per hop before the follower issues the next
+    request, so raising here aborts the chain before any private address is
+    dialed. The raise is caught by the stage as an ``error`` outcome (a stop
+    class), so the ladder ends without trying a browser rung against the
+    private address.
+    """
+    target = _redirect_target_from_response(response)
+    if not target:
+        return
+    if not _is_public_http_target(target):
+        try:
+            import httpx
+
+            raise httpx.RequestError(
+                f"redirect to non-public URL blocked by SSRF guard: {target}",
+                request=getattr(response, "request", None),
+            )
+        except ImportError:
+            raise ValueError(f"redirect to non-public URL blocked by SSRF guard: {target}")
+
+
+def page_client(timeout: float):
+    """A page-fetch client that refuses redirect hops to non-public targets.
+
+    Only the ladder's page fetches (robots.txt and the HTTP rung) use this.
+    Vendor API clients, SearXNG, the Camofox localhost server and local tiers
+    keep the plain ``new_client`` so legitimate loopback/lan targets they run
+    against are untouched.
+    """
     from .backends._http import new_client
 
+    client = new_client(timeout)
+    _ensure_redirect_guard(client)
+    return client
+
+
+def _ensure_redirect_guard(client: Any) -> None:
+    """Attach the SSRF response hook to ``client`` (once, best-effort)."""
+    try:
+        hooks = getattr(client, "event_hooks", None)
+        if hooks is None:
+            return
+        if isinstance(hooks, dict):
+            responses = hooks.get("response") or []
+            if _ssrf_response_hook not in responses:
+                responses = [*responses, _ssrf_response_hook]
+                hooks["response"] = responses
+                try:
+                    client.event_hooks = hooks
+                except Exception:  # noqa: BLE001 - some clients hold hooks read-only
+                    pass
+    except Exception:  # noqa: BLE001 - a faked client must not stop the fetch
+        return
+
+
+def _fetch_robots(origin: str, client: Any) -> tuple[int, str]:
     owns = client is None
-    http = client or new_client(10.0)
+    http = client or page_client(10.0)
     try:
         response = http.get(
             f"{origin}/robots.txt",
@@ -405,11 +573,10 @@ def http_stage(
     sleep: Callable[[float], None] = time.sleep,
 ) -> StageOutcome:
     """Stage 1: honest HTTP, no browser-only headers, trafilatura extraction."""
-    from .backends._http import new_client
-
     started = time.monotonic()
     owns = client is None
-    http = client or new_client(timeout)
+    http = client or page_client(timeout)
+    _ensure_redirect_guard(http)
     try:
         outcome = _http_attempt(http, url, timeout=timeout)
         if outcome.block_class == "rate_limited":
@@ -466,7 +633,7 @@ def _http_attempt(http: Any, url: str, *, timeout: float) -> StageOutcome:
 def playwright_chromium_build() -> str | None:
     """The managed Chromium build Playwright downloaded, or ``None``.
 
-    ``manage.py`` owns the probe because ``hermes sluice doctor`` reports the same fact;
+    ``manage.py`` owns the probe because ``hermes sluice-search doctor`` reports the same fact;
     the import is local so ``ladder`` stays importable without the manager's dependencies.
     """
     from .manage import _playwright_chromium_dir
@@ -507,7 +674,7 @@ def _chromium_skipped(url: str, exc: BaseException) -> StageOutcome:
         skipped=True,
         reason=(
             f"Chromium is not installed for Playwright ({exc}); "
-            "run `hermes sluice install playwright`"
+            "run `hermes sluice-search install playwright`"
         ),
     )
 
@@ -541,7 +708,7 @@ def chromium_stage(
             block_class="error",
             url=url,
             skipped=True,
-            reason="Playwright is not installed (run `hermes sluice install playwright`)",
+            reason="Playwright is not installed (run `hermes sluice-search install playwright`)",
         )
 
     browser_locale = normalize_locale(locale) if locale else host_locale()
@@ -580,11 +747,61 @@ def chromium_stage(
                         context.add_cookies([dict(cookie) for cookie in cookies])
                     except Exception:  # noqa: BLE001 - a bad cookie must not kill the rung
                         pass
+                nav_blocked: dict[str, str | None] = {"target": None}
+                seen_navigation = {"done": False}
+
+                def _guard(route: Any, request: Any) -> None:
+                    """Abort navigations to non-public hosts (redirect-hop SSRF).
+
+                    Only navigation requests are checked: subresources are
+                    already constrained by the navigation target's page, and
+                    checking every request would pay a DNS resolution per
+                    subresource on a rung that exists to pass bot challenges.
+                    The first navigation is the requested URL itself, which the
+                    caller (Hermes) already vetted, so it is exempt; every
+                    later navigation (redirects, in-page navigations) is
+                    checked and aborted when its host is not public.
+                    """
+                    try:
+                        is_nav = bool(request.is_navigation_request())
+                    except Exception:  # noqa: BLE001 - a faked request is not a navigation
+                        is_nav = False
+                    target = str(getattr(request, "url", "") or "")
+                    if is_nav:
+                        if not seen_navigation["done"]:
+                            seen_navigation["done"] = True
+                            route.continue_()
+                            return
+                        if target and not _is_public_http_target(target):
+                            nav_blocked["target"] = target
+                            route.abort("blockedbyclient")
+                            return
+                    route.continue_()
+
+                try:
+                    context.route("**/*", _guard)
+                except Exception:  # noqa: BLE001 - a context without routing stays unguarded
+                    pass
                 page = context.new_page()
                 try:
-                    response = page.goto(
-                        url, wait_until="domcontentloaded", timeout=int(timeout * 1000)
-                    )
+                    try:
+                        response = page.goto(
+                            url, wait_until="domcontentloaded", timeout=int(timeout * 1000)
+                        )
+                    except Exception as goto_exc:
+                        if nav_blocked["target"]:
+                            # A blocked navigation is a policy stop, not a rung
+                            # failure: never report it as a generic error or climb.
+                            return StageOutcome(
+                                stage="chromium",
+                                block_class="policy_blocked",
+                                url=url,
+                                error=(
+                                    "navigation to non-public URL blocked by SSRF guard: "
+                                    f"{nav_blocked['target']}"
+                                ),
+                            )
+                        raise goto_exc
                     try:
                         page.wait_for_load_state("networkidle", timeout=3_000)
                     except Exception:  # noqa: BLE001 - busy pages never reach networkidle
@@ -761,10 +978,9 @@ def fetch(
     client = http_client
     owns_client = False
     if client is None:
-        from .backends._http import new_client
-
-        client = new_client(HTTP_TIMEOUT_SECONDS)
+        client = page_client(HTTP_TIMEOUT_SECONDS)
         owns_client = True
+    _ensure_redirect_guard(client)
 
     stages: list[dict[str, Any]] = []
     domain = parsed.netloc.lower()

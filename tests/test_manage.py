@@ -145,8 +145,8 @@ def test_missing_steps_name_the_exact_next_command(tmp_path):
     )
     steps = {step["name"]: step for step in missing_steps(detection, settings=_settings())}
     assert steps["camofox plugin"]["next"] == "hermes plugins install camofox"
-    assert steps["camofox server"]["next"] == "hermes sluice install camofox"
-    assert steps["playwright chromium"]["next"] == "hermes sluice install playwright"
+    assert steps["camofox server"]["next"] == "hermes sluice-search install camofox"
+    assert steps["playwright chromium"]["next"] == "hermes sluice-search install playwright"
     assert "Settings" in steps["browserbase key"]["next"]
 
 
@@ -168,8 +168,8 @@ def test_render_detection_is_a_honest_summary():
 
 def test_config_routes_cover_both_backends_and_the_outer_cache():
     assert CONFIG_ROUTES == {
-        "web.search_backend": "sluice",
-        "web.extract_backend": "sluice",
+        "web.search_backend": "sluice-search",
+        "web.extract_backend": "sluice-search",
         "web.cache_enabled": "false",
     }
     assert config_command("web.cache_enabled") == ["hermes", "config", "set", "web.cache_enabled", "false"]
@@ -181,7 +181,7 @@ def test_run_config_set_prints_without_applying():
     result = run_config_set("web.search_backend")
     assert result["applied"] is False
     assert result["ok"] is None
-    assert result["command"] == ["hermes", "config", "set", "web.search_backend", "sluice"]
+    assert result["command"] == ["hermes", "config", "set", "web.search_backend", "sluice-search"]
 
 
 def test_run_config_set_runs_only_when_asked():
@@ -193,7 +193,7 @@ def test_run_config_set_runs_only_when_asked():
         return 0, "ok", ""
 
     result = run_config_set("web.extract_backend", apply=True, runner=runner)
-    assert seen == [["hermes", "config", "set", "web.extract_backend", "sluice"]]
+    assert seen == [["hermes", "config", "set", "web.extract_backend", "sluice-search"]]
     assert result["applied"] is True and result["ok"] is True
     assert result["returncode"] == 0
 
@@ -231,7 +231,7 @@ def test_playwright_plan_uses_the_running_interpreter():
     plan = install_plan("playwright", which=_which())
     assert plan["supported"] is True
     assert plan["commands"][0][1:] == ["-m", "playwright", "install", "chromium"]
-    assert plan["next"] == "hermes sluice install camofox"
+    assert plan["next"] == "hermes sluice-search install camofox"
 
 
 def test_camofox_prefers_podman_then_docker_then_npm(tmp_path, monkeypatch):
@@ -246,7 +246,7 @@ def test_camofox_prefers_podman_then_docker_then_npm(tmp_path, monkeypatch):
 
     npm = install_plan("camofox", which=_which("npm"), home=tmp_path)
     command = npm["commands"][0]
-    assert command[:4] == ["/usr/bin/npm", "install", "--prefix", str(tmp_path / "plugin-data" / "sluice" / "camofox")]
+    assert command[:4] == ["/usr/bin/npm", "install", "--prefix", str(tmp_path / "plugin-data" / "sluice-search" / "camofox")]
     assert command[4] == CAMOFOX_NPM_PACKAGE
     assert npm["next"] == f"npx --yes {CAMOFOX_NPM_PACKAGE}"
 
@@ -255,7 +255,7 @@ def test_camofox_without_a_runtime_or_npm_is_unsupported(tmp_path):
     plan = install_plan("camofox", which=_which(), home=tmp_path)
     assert plan["supported"] is False
     assert plan["commands"] == []
-    assert "podman" in plan["next"] and "hermes sluice install camofox" in plan["next"]
+    assert "podman" in plan["next"] and "hermes sluice-search install camofox" in plan["next"]
 
 
 def test_browserbase_is_a_key_route_not_an_install():

@@ -33,14 +33,30 @@ from typing import Any, Callable, Mapping, Sequence
 
 CONFIG_SET_TIMEOUT_SECONDS = 10
 
+#: Env keys child install/config processes may inherit. Provider API keys and
+#: every other agent credential stay in the parent; npm, podman/docker, the
+#: Playwright installer and ``hermes config set`` need only to launch, find the
+#: Hermes home and reach the network.
+_CHILD_ENV_KEYS: tuple[str, ...] = (
+    "PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "PYTHONPATH",
+    "SYSTEMROOT", "TMPDIR", "TEMP", "TMP",
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+)
+
+
+def _minimal_child_env() -> dict[str, str]:
+    """Only allowlisted keys from the parent environment."""
+    return {key: os.environ[key] for key in _CHILD_ENV_KEYS if key in os.environ}
+
 #: The Hermes-level keys Sluice may switch, and their values (DESIGN.md:65-67, 209-210).
 CONFIG_ROUTES: dict[str, str] = {
-    "web.search_backend": "sluice",
-    "web.extract_backend": "sluice",
+    "web.search_backend": "sluice-search",
+    "web.extract_backend": "sluice-search",
     "web.cache_enabled": "false",
 }
 
-#: Install targets ``hermes sluice install`` accepts (PLAN.md:123).
+#: Install targets ``hermes sluice-search install`` accepts (PLAN.md:123).
 INSTALL_TARGETS: tuple[str, ...] = ("playwright", "camofox", "browserbase")
 
 #: A browser download can be slow; the job timeout is generous but finite.
@@ -48,8 +64,12 @@ INSTALL_TIMEOUT_SECONDS = 1800
 
 #: Container the camofox install creates, so ``stop`` can name it without guessing.
 CAMOFOX_CONTAINER = "sluice-camofox"
-CAMOFOX_IMAGE = "ghcr.io/jo-inc/camofox-browser:latest"
-CAMOFOX_NPM_PACKAGE = "@askjo/camofox-browser"
+#: Pinned by digest (index digest of the :latest manifest at review time).
+CAMOFOX_IMAGE = (
+    "ghcr.io/jo-inc/camofox-browser@"
+    "sha256:49f8e02f9fb0e191b406845482745efc72f835db06789e3a34e77a6ff1497046"
+)
+CAMOFOX_NPM_PACKAGE = "@askjo/camofox-browser@1.19.0"
 
 #: Packaged Chromium builds Hermes or the OS may ship. ``shutil.which`` decides presence.
 CHROMIUM_BINARIES: tuple[str, ...] = (
@@ -232,7 +252,7 @@ def missing_steps(
             {
                 "name": "camofox server",
                 "detail": "no camofox server answered /health; the ladder stops at Chromium",
-                "next": "hermes sluice install camofox",
+                "next": "hermes sluice-search install camofox",
             }
         )
     if not detection.playwright_chromium:
@@ -240,7 +260,7 @@ def missing_steps(
             {
                 "name": "playwright chromium",
                 "detail": "no Playwright Chromium build; the ladder falls back to packaged Chromium",
-                "next": "hermes sluice install playwright",
+                "next": "hermes sluice-search install playwright",
             }
         )
     if not detection.browserbase_key:
@@ -267,7 +287,7 @@ def config_command(key: str) -> list[str]:
 def _default_config_runner(
     command: Sequence[str], *, timeout: float
 ) -> tuple[int, str, str]:
-    """Run one ``hermes config set`` with the current environment. No retry, no shell."""
+    """Run one ``hermes config set`` with only the allowlisted environment. No retry, no shell."""
     try:
         proc = subprocess.run(
             list(command),
@@ -275,7 +295,7 @@ def _default_config_runner(
             text=True,
             timeout=timeout,
             check=False,
-            env=dict(os.environ),
+            env=_minimal_child_env(),
         )
     except FileNotFoundError:
         return 127, "", "the 'hermes' executable is not on PATH"
@@ -367,7 +387,7 @@ def _default_install_runner(command: Sequence[str]) -> tuple[int, str]:
             text=True,
             timeout=INSTALL_TIMEOUT_SECONDS,
             check=False,
-            env=dict(os.environ),
+            env=_minimal_child_env(),
         )
     except FileNotFoundError:
         return 127, f"{command[0]} is not on PATH"
@@ -382,7 +402,7 @@ def camofox_package_dir(home: Path | None = None) -> Path:
     override = os.environ.get("SLUICE_CAMOFOX_DIR")
     if override:
         return Path(override).expanduser()
-    return (home or hermes_home()) / "plugin-data" / "sluice" / "camofox"
+    return (home or hermes_home()) / "plugin-data" / "sluice-search" / "camofox"
 
 
 def install_plan(
@@ -402,7 +422,7 @@ def install_plan(
             "target": target,
             "supported": True,
             "commands": [[sys.executable, "-m", "playwright", "install", "chromium"]],
-            "next": "hermes sluice install camofox",
+            "next": "hermes sluice-search install camofox",
             "note": "Downloads the Chromium build Playwright drives. Explicit action only.",
         }
 
@@ -426,7 +446,7 @@ def install_plan(
                         CAMOFOX_IMAGE,
                     ]
                 ],
-                "next": "hermes sluice doctor",
+                "next": "hermes sluice-search doctor",
                 "note": "Starts the camofox server in a detached container; the first start downloads Camoufox.",
             }
         npm = which("npm")
@@ -435,7 +455,7 @@ def install_plan(
                 "target": target,
                 "supported": False,
                 "commands": [],
-                "next": "install podman, docker or Node.js, then run: hermes sluice install camofox",
+                "next": "install podman, docker or Node.js, then run: hermes sluice-search install camofox",
                 "note": "No container runtime and no npm on PATH.",
             }
         prefix = camofox_package_dir(home)
@@ -558,7 +578,7 @@ def stop_camofox(
 
 
 def render_detection(detection: Detection) -> str:
-    """One-line-per-engine summary for ``hermes sluice doctor``."""
+    """One-line-per-engine summary for ``hermes sluice-search doctor``."""
     def mark(value: bool | None) -> str:
         return "yes" if value else ("no" if value is False else "unknown")
 

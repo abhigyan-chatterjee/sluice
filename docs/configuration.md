@@ -1,7 +1,7 @@
 # Configuration
 
 Sluice reads its configuration from one place: the plugin settings Hermes stores under
-`plugins.entries.sluice.settings`, plus the credential environment variables those settings
+`plugins.entries.sluice-search.settings`, plus the credential environment variables those settings
 name. This page lists every key, its type, its default and what it changes.
 `tests/test_config.py` asserts that every non-secret key in `plugin.yaml` has a matching
 entry in `sluice/config.py:DEFAULTS` with the same default, so the manifest and the runtime
@@ -14,7 +14,7 @@ cannot drift.
 1. `DEFAULTS` from `sluice/config.py`.
 2. Overrides. With a plugin context, one `ctx.get_config(key, default)` call per key.
    Without a context (the `sluice` console script, the dashboard API, tests), the saved
-   values under `plugins.entries.sluice.settings`.
+   values under `plugins.entries.sluice-search.settings`.
 3. Credentials: the ten `*_API_KEY` names through `get_provider_env()`, or `os.environ`
    when Hermes is not importable.
 4. `camofox_url` falls back to `CAMOFOX_URL`, then to `http://localhost:9377`.
@@ -111,15 +111,15 @@ The value is validated once, in `sluice/config.py`, whichever source it came fro
 * a query or a fragment is refused, because neither belongs on a base address.
 
 A refused address is dropped and its reason kept in the settings view as
-`searxng_url_error`. The backend is then not routed to, `hermes sluice doctor` prints the
+`searxng_url_error`. The backend is then not routed to, `hermes sluice-search doctor` prints the
 reason on its own line, and the SearXNG row's `missing` text carries it to the desktop pane.
 Nothing reports "not set" for an address the user did set.
 
 ```sh
-hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8080
-hermes config get plugins.entries.sluice.settings.searxng_url
+hermes config set plugins.entries.sluice-search.settings.searxng_url http://127.0.0.1:8080
+hermes config get plugins.entries.sluice-search.settings.searxng_url
 # observed: http://127.0.0.1:8080
-hermes sluice doctor
+hermes sluice-search doctor
 # observed (excerpt from the twelve-row table):
 # searxng      local    paid  n/a      ready
 # ddgs         keyless  paid  keyless  ready
@@ -175,7 +175,7 @@ backend and does not appear in the manifest.
 
 ## Settings the code reads but the manifest does not declare
 
-These are honoured when present under `plugins.entries.sluice.settings`, but they have no
+These are honoured when present under `plugins.entries.sluice-search.settings`, but they have no
 field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_KEYS` and
 `plan_*` are writable there), so a config-file edit is the route.
 
@@ -198,7 +198,7 @@ field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_
 | `CAMOFOX_URL` | `sluice/config.py` | Camofox server address when `camofox_url` is empty. |
 | `BROWSERBASE_API_KEY` | `sluice/manage.py` | Presence only, for the doctor and pane "Browserbase" row. |
 | `SLUICE_DATA_DIR` | `sluice/store.py` | Data directory override when Hermes' `plugin_data_dir()` is not importable (standalone installs and tests). Ignored when Hermes is present. |
-| `HERMES_HOME` | `sluice/manage.py` | Hermes home used to find `cache/web`, `plugin-data/sluice/camofox` and installed plugins. |
+| `HERMES_HOME` | `sluice/manage.py` | Hermes home used to find `cache/web`, `plugin-data/sluice-search/camofox` and installed plugins. |
 | `PLAYWRIGHT_BROWSERS_PATH` | `sluice/manage.py` | Where detection looks for the Playwright Chromium build. |
 | `SLUICE_CAMOFOX_DIR` | `sluice/manage.py` | Install directory for the npm fallback of the Camofox server. |
 | `SLUICE_LIVE_TESTS` | `tests/test_backends.py` | Test switch only, never read by the plugin at runtime. `1` opts into the live vendor calls. |
@@ -206,14 +206,14 @@ field in Settings ▸ Plugins and `POST /settings` refuses them (only `EDITABLE_
 
 ## Hermes-level keys Sluice depends on
 
-These are Hermes keys, not plugin settings. Sluice never writes them; `hermes sluice setup`
+These are Hermes keys, not plugin settings. Sluice never writes them; `hermes sluice-search setup`
 prints the commands and runs them only with `--apply` (`sluice/manage.py`).
 
 | Key | Value Sluice sets | Why |
 |---|---|---|
-| `web.search_backend` | `sluice` | Makes the native `web_search` tool use the Sluice provider. Until this is set, installing the plugin changes nothing. |
-| `web.extract_backend` | `sluice` | Same for `web_extract`. |
-| `web.cache_enabled` | `false` | Turns off Hermes' outer `cache/web` layer so exactly one tier-aware cache and one TTL govern. `hermes sluice cache clear` clears both layers anyway. |
+| `web.search_backend` | `sluice-search` | Makes the native `web_search` tool use the Sluice provider. Until this is set, installing the plugin changes nothing. |
+| `web.extract_backend` | `sluice-search` | Same for `web_extract`. |
+| `web.cache_enabled` | `false` | Turns off Hermes' outer `cache/web` layer so exactly one tier-aware cache and one TTL govern. `hermes sluice-search cache clear` clears both layers anyway. |
 
 Two wrapper keys shape what the model sees but belong to Hermes, not Sluice:
 `web.extract_char_limit` (applied by the wrapper to the returned extract text) and
@@ -222,16 +222,16 @@ above).
 
 ## Changing settings
 
-Three routes, all writing the same `plugins.entries.sluice.settings` map:
+Three routes, all writing the same `plugins.entries.sluice-search.settings` map:
 
 1. Settings ▸ Plugins in Hermes, which renders `plugin.yaml`'s `config_schema`.
-2. The Desktop pane's settings page, which posts to `/api/plugins/sluice/settings`. The route
+2. The Desktop pane's settings page, which posts to `/api/plugins/sluice-search-search/settings`. The route
    writes each key through `PluginContext.set_config()`, the documented plugin API, which is
    the same writer Settings ▸ Plugins uses, so the CLI, the pane and the plugin cannot
    disagree on where a setting lives. It refuses unknown keys, every secret, and a value
    whose type does not match the manifest:
    `{"ok": false, "error": "'cache_max_mb' should be int (got str)"}`.
-3. `hermes config set plugins.entries.sluice.settings.<key> <value>`.
+3. `hermes config set plugins.entries.sluice-search.settings.<key> <value>`.
 
 `POST /settings` accepts only `EDITABLE_KEYS` plus `plan_<vendor>` (`sluice/api.py`). The
 observed validation results:
@@ -253,7 +253,7 @@ is where the context comes from. Without one it says so instead of failing later
 `{"ok": false, "error": "no Hermes plugin context in this process: enable Sluice with
 'hermes plugins' and restart Hermes, then save from Settings ▸ Plugins"}`.
 
-A `hermes sluice` subcommand reads the settings fresh on every invocation, so a change is
+A `hermes sluice-search` subcommand reads the settings fresh on every invocation, so a change is
 visible there at once. Inside a long-lived Hermes process the provider builds its settings
 and router once, so a change applies after that provider is rebuilt, which in practice means
 a Hermes or gateway restart.

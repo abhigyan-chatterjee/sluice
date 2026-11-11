@@ -1,5 +1,5 @@
 {
-  "name": "sluice",
+  "name": "sluice-search",
   "label": "Sluice",
   "description": "Free-first web search and extraction router: twelve backends, circuit breakers and a policy-first fetch ladder. The desktop pane is the UI; this entry only provides the backend routes.",
   "icon": "Waves",

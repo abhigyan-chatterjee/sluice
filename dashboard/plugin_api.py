@@ -1,4 +1,4 @@
-"""Sluice dashboard API — the FastAPI wrapper, mounted at ``/api/plugins/sluice/``.
+"""Sluice dashboard API — the FastAPI wrapper, mounted at ``/api/plugins/sluice-search-search/``.
 
 PLAN.md:127-134 fixes the route list: ``GET /status``, ``POST /probe``, ``POST /test``,
 ``POST /install``, ``GET /jobs/{id}``, ``POST /cache/clear``. Two support routes are added

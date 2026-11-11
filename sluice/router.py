@@ -334,7 +334,7 @@ class Router:
     ) -> dict[str, Any]:
         """Run one query through the ladder of backends. Never raises."""
         if not isinstance(query, str) or not query.strip():
-            return {"success": False, "error": "sluice: empty query"}
+            return {"success": False, "error": "sluice-search: empty query"}
         safe_limit = coerce_limit(limit)
         qclass = classify_query(query)
         namespace = NS_SEARCH_NEWS if qclass == "news" else NS_SEARCH_GENERAL
@@ -369,7 +369,7 @@ class Router:
             # needs to see them to count them, so a fallback answer is labelled as one.
             ordered = self.candidates("search", query, respect_store=False)
         except Exception as exc:  # noqa: BLE001 - routing never raises to the tool layer
-            return {"success": False, "error": f"sluice: could not build the backend list ({exc})"}
+            return {"success": False, "error": f"sluice-search: could not build the backend list ({exc})"}
 
         per_backend = self._int_setting("per_backend_budget_ms", PER_BACKEND_BUDGET_MS) / 1000.0
         total = self._int_setting("total_budget_ms", TOTAL_BUDGET_MS) / 1000.0
@@ -407,7 +407,7 @@ class Router:
                 fallback_used = attempted > 0 or skipped > 0
                 if fallback_used:
                     logger.warning(
-                        "sluice: %s answered %r after %d candidate(s) could not: %s",
+                        "sluice-search: %s answered %r after %d candidate(s) could not: %s",
                         candidate.id,
                         query,
                         attempted + skipped,
@@ -459,7 +459,7 @@ class Router:
         detail = "; ".join(reasons) if reasons else "no backend is configured or routable"
         return {
             "success": False,
-            "error": f"sluice: no backend answered for {query!r}. {detail}",
+            "error": f"sluice-search: no backend answered for {query!r}. {detail}",
         }
 
     def _routable(self, vendor: str | None) -> bool:
@@ -526,7 +526,7 @@ class Router:
         """Per-URL extraction through the local ladder, cached and isolated per URL.
 
         DESIGN.md:175-183: extraction is local only, so no paid extract API is called here.
-        Vendor extract adapters exist for ``hermes sluice test --backend <id> --extract`` and
+        Vendor extract adapters exist for ``hermes sluice-search test --backend <id> --extract`` and
         for the probe surface; the router itself never spends money on a page fetch.
         """
         fmt = str(kwargs.get("format") or "")
@@ -555,7 +555,7 @@ class Router:
                 "url": url,
                 "title": "",
                 "content": "",
-                "error": f"sluice: extract failed: {exc}",
+                "error": f"sluice-search: extract failed: {exc}",
                 "block_class": "error",
                 "stage": "router",
                 "stages": [],

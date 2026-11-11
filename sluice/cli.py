@@ -1,4 +1,4 @@
-"""``hermes sluice`` and the standalone ``sluice`` console script.
+"""``hermes sluice-search`` and the standalone ``sluice-search`` console script.
 
 Command surface fixed by PLAN.md:119-125: ``doctor``, ``status``, ``setup [--apply]``,
 ``use search|extract [--apply]``, ``test --backend <id> "<query>"``, ``cache clear`` and
@@ -35,7 +35,7 @@ from .manage import (
 )
 from .store import open_store
 
-PROG = "hermes sluice"
+PROG = "hermes sluice-search"
 
 #: ``use`` targets and the Hermes key each one switches (DESIGN.md:65-67).
 USE_ROUTES: dict[str, str] = {
@@ -73,11 +73,11 @@ def _next_command(backend: Any, settings: Mapping[str, Any]) -> str:
         if error:
             return (
                 f"{error} Fix it with a full http(s) URL, for example: "
-                "hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8888"
+                "hermes config set plugins.entries.sluice-search.settings.searxng_url http://127.0.0.1:8888"
             )
         return (
             "set SEARXNG_URL (for example http://127.0.0.1:8888), or: "
-            "hermes config set plugins.entries.sluice.settings.searxng_url http://127.0.0.1:8888; "
+            "hermes config set plugins.entries.sluice-search.settings.searxng_url http://127.0.0.1:8888; "
             "then: docker compose -f docker/searxng/docker-compose.yml up -d"
         )
     env = backend.spec.secret_env or ""
@@ -85,7 +85,7 @@ def _next_command(backend: Any, settings: Mapping[str, Any]) -> str:
         return f"set {env} in Settings ▸ Plugins, or enable keyless_enabled"
     if backend.keyless_capable and not backend.keyless_enabled:
         return "enable keyless_enabled in Settings ▸ Plugins"
-    return "hermes sluice doctor"
+    return "hermes sluice-search doctor"
 
 
 def _print_rows(rows: Sequence[Mapping[str, Any]]) -> None:
@@ -145,7 +145,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             print(f"  {vendor}: {message}")
             print(f"    next: {next_step}")
     print()
-    print("next: hermes sluice setup --apply   (point Hermes at Sluice)")
+    print("next: hermes sluice-search setup --apply   (point Hermes at Sluice)")
     return 0
 
 
@@ -197,7 +197,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     finally:
         store.close()
     print()
-    print("next: hermes sluice test --backend ddgs \"sluice smoke test\"")
+    print("next: hermes sluice-search test --backend ddgs \"sluice smoke test\"")
     return 0
 
 
@@ -226,7 +226,7 @@ def _cmd_setup(args: argparse.Namespace) -> int:
         print("dry run: re-run with --apply to write these three keys")
     elif all(result["ok"] for result in results):
         print("done: Hermes now routes web_search and web_extract through Sluice, outer cache off")
-        print("next: hermes sluice test --backend ddgs \"sluice smoke test\"")
+        print("next: hermes sluice-search test --backend ddgs \"sluice smoke test\"")
     else:
         print("one or more config writes failed; fix the error above and re-run", file=sys.stderr)
         return 1
@@ -244,7 +244,7 @@ def _cmd_use(args: argparse.Namespace) -> int:
     _render_route(result)
     if not result["ok"]:
         return 1
-    print(f"next: hermes sluice test --backend ddgs \"sluice smoke test\"")
+    print(f"next: hermes sluice-search test --backend ddgs \"sluice smoke test\"")
     return 0
 
 
@@ -257,11 +257,11 @@ def _cmd_test(args: argparse.Namespace) -> int:
     try:
         backend = make_backend(vendor, settings)
     except KeyError as exc:
-        print(f"sluice: {exc.args[0]}", file=sys.stderr)
+        print(f"sluice-search: {exc.args[0]}", file=sys.stderr)
         return 2
     missing = backend.missing_message()
     if missing:
-        print(f"sluice: {vendor} cannot run: {missing}", file=sys.stderr)
+        print(f"sluice-search: {vendor} cannot run: {missing}", file=sys.stderr)
         print(f"next: {_next_command(backend, settings)}", file=sys.stderr)
         return 1
     store = _store(settings)
@@ -269,7 +269,7 @@ def _cmd_test(args: argparse.Namespace) -> int:
     try:
         result = backend.search(args.query, limit=args.limit)
     except NotImplementedError as exc:
-        print(f"sluice: {exc}", file=sys.stderr)
+        print(f"sluice-search: {exc}", file=sys.stderr)
         return 1
     finally:
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
@@ -290,8 +290,8 @@ def _cmd_test(args: argparse.Namespace) -> int:
     finally:
         store.close()
     if not ok:
-        print(f"sluice: {vendor} failed in {elapsed_ms:.0f} ms: {result.get('error')}", file=sys.stderr)
-        print(f"next: hermes sluice status", file=sys.stderr)
+        print(f"sluice-search: {vendor} failed in {elapsed_ms:.0f} ms: {result.get('error')}", file=sys.stderr)
+        print(f"next: hermes sluice-search status", file=sys.stderr)
         return 1
     rows = result.get("results") or []
     print(f"{vendor} ({tier}, {mode}) answered in {elapsed_ms:.0f} ms with {len(rows)} result(s)")
@@ -311,12 +311,12 @@ def _cmd_cache_clear(args: argparse.Namespace) -> int:
     finally:
         store.close()
     outer = clear_outer_web_cache()
-    print(f"sluice cache: deleted {removed} row(s)")
+    print(f"sluice-search cache: deleted {removed} row(s)")
     if outer["existed"]:
         print(f"hermes cache/web: deleted {outer['removed']} file(s), {outer['bytes']} bytes ({outer['path']})")
     else:
         print(f"hermes cache/web: nothing at {outer['path']}")
-    print("next: hermes sluice status")
+    print("next: hermes sluice-search status")
     return 0
 
 
@@ -342,7 +342,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
             print(f"  {line}")
     if job.get("status") != "succeeded":
         print(f"error: {job.get('error') or 'install failed'}", file=sys.stderr)
-        print("next: hermes sluice doctor", file=sys.stderr)
+        print("next: hermes sluice-search doctor", file=sys.stderr)
         return 1
     print(f"done. next: {result['next']}")
     return 0
@@ -370,7 +370,7 @@ def _add_use_apply(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_subcommands(parser: argparse.ArgumentParser) -> None:
-    subs = parser.add_subparsers(dest="sluice_command", metavar="<command>")
+    subs = parser.add_subparsers(dest="sluice_search_command", metavar="<command>")
 
     subs.add_parser("doctor", help="Show the twelve-backend inventory: free/paid and what is missing")
 
@@ -403,32 +403,32 @@ def _add_subcommands(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Parser for the standalone ``sluice`` entry point (``[project.scripts]``)."""
     parser = argparse.ArgumentParser(
-        prog="sluice",
+        prog="sluice-search",
         description="Tiered free-first web search and extraction router for Hermes.",
     )
-    parser.add_argument("--version", action="version", version=f"sluice {__version__}")
+    parser.add_argument("--version", action="version", version=f"sluice-search {__version__}")
     _add_subcommands(parser)
     return parser
 
 
 def setup_parser(parser: argparse.ArgumentParser) -> None:
-    """Attach the Sluice command tree to the parser Hermes built for ``hermes sluice``."""
+    """Attach the Sluice command tree to the parser Hermes built for ``hermes sluice-search``."""
     parser.set_defaults(func=handle_command)
     _add_subcommands(parser)
 
 
 def handle_command(args: argparse.Namespace) -> int:
-    """Dispatch one ``hermes sluice`` invocation. Non-zero means the command failed."""
-    command = getattr(args, "sluice_command", None)
+    """Dispatch one ``hermes sluice-search`` invocation. Non-zero means the command failed."""
+    command = getattr(args, "sluice_search_command", None)
     if command is None:
         build_parser().print_help(sys.stderr)
         return 2
     if command == "cache" and getattr(args, "cache_command", None) != "clear":
-        print("sluice: cache needs an action; the only action is 'clear'", file=sys.stderr)
+        print("sluice-search: cache needs an action; the only action is 'clear'", file=sys.stderr)
         return 2
     handler = _HANDLERS.get(command)
     if handler is None:  # pragma: no cover - argparse rejects unknown commands first
-        print(f"sluice: unknown command {command!r}", file=sys.stderr)
+        print(f"sluice-search: unknown command {command!r}", file=sys.stderr)
         return 2
     return handler(args)
 
@@ -437,7 +437,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Console-script entry point."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if getattr(args, "sluice_command", None) is None:
+    if getattr(args, "sluice_search_command", None) is None:
         parser.print_help(sys.stderr)
         return 2
     return handle_command(args)

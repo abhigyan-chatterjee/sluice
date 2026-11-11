@@ -63,14 +63,14 @@ def test_doctor_lists_all_twelve_backends_with_tier_plan_and_key(isolated, capsy
     # ddgs needs no key; every keyed vendor without one says why.
     assert "keyless" in out
     assert "missing:" in out
-    assert "next: hermes sluice setup --apply" in out
+    assert "next: hermes sluice-search setup --apply" in out
 
 
 def test_doctor_names_the_searxng_compose_command(isolated, capsys):
     assert _run(["doctor"]) == 0
     out = capsys.readouterr().out
     assert "SEARXNG_URL" in out
-    assert "hermes config set plugins.entries.sluice.settings.searxng_url" in out
+    assert "hermes config set plugins.entries.sluice-search.settings.searxng_url" in out
     assert "docker compose -f docker/searxng/docker-compose.yml up -d" in out
 
 
@@ -98,7 +98,7 @@ def test_status_shows_persisted_state(isolated, capsys):
     brave = next(row for row in out.splitlines() if row.startswith("brave"))
     assert "quota" in brave
     assert "cache: 1 live / 1 rows" in out
-    assert "next: hermes sluice test" in out
+    assert "next: hermes sluice-search test" in out
 
 
 # ── setup / use ────────────────────────────────────────────────────────────────
@@ -134,8 +134,8 @@ def test_setup_apply_reports_success(isolated, capsys, monkeypatch):
 def test_setup_apply_fails_non_zero(isolated, capsys, monkeypatch):
     def fake_setup(*, apply=False, runner=None):
         return [
-            {"key": "web.search_backend", "value": "sluice",
-             "command": ["hermes", "config", "set", "web.search_backend", "sluice"],
+            {"key": "web.search_backend", "value": "sluice-search",
+             "command": ["hermes", "config", "set", "web.search_backend", "sluice-search"],
              "applied": True, "ok": False, "returncode": 1, "output": "", "error": "locked"}
         ]
 
@@ -149,14 +149,14 @@ def test_use_switches_the_named_key(isolated, capsys, monkeypatch):
 
     def fake_run(key, *, apply=False, runner=None, timeout=10):
         seen.append((key, apply))
-        return {"key": key, "value": "sluice", "command": ["hermes", "config", "set", key, "sluice"],
+        return {"key": key, "value": "sluice-search", "command": ["hermes", "config", "set", key, "sluice-search"],
                 "applied": apply, "ok": True if apply else None, "returncode": 0 if apply else None,
                 "output": "", "error": None}
 
     monkeypatch.setattr(cli, "run_config_set", fake_run)
     assert _run(["use", "extract"]) == 0
     assert seen == [("web.extract_backend", False)]
-    assert "hermes config set web.extract_backend sluice" in capsys.readouterr().out
+    assert "hermes config set web.extract_backend sluice-search" in capsys.readouterr().out
 
     assert _run(["use", "search", "--apply"]) == 0
     assert seen[-1] == ("web.search_backend", True)
@@ -209,7 +209,7 @@ def test_test_command_exits_non_zero_on_a_backend_failure(isolated, capsys, monk
     assert _run(["test", "--backend", "ddgs", "q"]) == 1
     captured = capsys.readouterr()
     assert "HTTP 429" in captured.err
-    assert "next: hermes sluice status" in captured.err
+    assert "next: hermes sluice-search status" in captured.err
 
 
 def test_test_command_names_the_missing_key_and_next_command(isolated, capsys, monkeypatch):
@@ -286,13 +286,13 @@ def test_install_reports_a_successful_job(isolated, capsys, monkeypatch):
                     "output": "downloaded", "error": None},
             "commands": [],
             "note": "",
-            "next": "hermes sluice install camofox",
+            "next": "hermes sluice-search install camofox",
         },
     )
     assert _run(["install", "playwright"]) == 0
     out = capsys.readouterr().out
     assert "job abc123 [succeeded]" in out
-    assert "done. next: hermes sluice install camofox" in out
+    assert "done. next: hermes sluice-search install camofox" in out
 
 
 def test_install_reports_a_failed_job_non_zero(isolated, capsys, monkeypatch):
@@ -306,7 +306,7 @@ def test_install_reports_a_failed_job_non_zero(isolated, capsys, monkeypatch):
                     "output": "", "error": "exited 1"},
             "commands": [],
             "note": "",
-            "next": "hermes sluice doctor",
+            "next": "hermes sluice-search doctor",
         },
     )
     assert _run(["install", "playwright"]) == 1

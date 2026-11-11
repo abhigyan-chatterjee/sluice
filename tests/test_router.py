@@ -544,7 +544,7 @@ def test_provider_surfaces_a_clean_failure_when_nothing_is_routable(monkeypatch)
 def test_an_invalid_query_is_rejected_without_calling_a_backend(query):
     backend = FakeBackend("only", "free")
     result = router_with(backend).search(query)  # type: ignore[arg-type]
-    assert result == {"success": False, "error": "sluice: empty query"}
+    assert result == {"success": False, "error": "sluice-search: empty query"}
     assert backend.calls == []
 
 

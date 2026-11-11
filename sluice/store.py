@@ -51,7 +51,7 @@ NS_EXTRACT = "extract"
 NS_EXTRACT_NEGATIVE = "extract:negative"
 NS_ROBOTS = "robots"
 
-#: Latency samples kept per backend for the p50 in ``hermes sluice status`` and the pane.
+#: Latency samples kept per backend for the p50 in ``hermes sluice-search status`` and the pane.
 LATENCY_SAMPLE_WINDOW = 20
 LATENCY_EMA_ALPHA = 0.3
 
@@ -831,18 +831,18 @@ def default_data_dir() -> Path:
     """Where the store lives when no Hermes context supplies a data directory.
 
     Hermes' own convention is ``<hermes home>/plugin-data/<name>/``
-    (``plugins.plugin_storage.plugin_data_dir``); the ``~/.hermes/plugins/sluice/data``
+    (``plugins.plugin_storage.plugin_data_dir``); the ``~/.hermes/plugins/sluice-search/data``
     path is the standalone fallback from the build plan.
     """
     try:
         from plugins.plugin_storage import plugin_data_dir
 
-        return Path(plugin_data_dir("sluice"))
+        return Path(plugin_data_dir("sluice-search"))
     except Exception:  # noqa: BLE001 - standalone install without Hermes
         override = os.environ.get("SLUICE_DATA_DIR")
         if override:
             return Path(override).expanduser()
-        return Path.home() / ".hermes" / "plugins" / "sluice" / "data"
+        return Path.home() / ".hermes" / "plugins" / "sluice-search" / "data"
 
 
 def open_store(

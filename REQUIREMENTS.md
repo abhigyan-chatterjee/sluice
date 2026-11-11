@@ -36,7 +36,7 @@ fallback chain they cannot see.
 Goals that shape every task (`DESIGN.md:19-31`): native tools served by one provider so cron
 sessions, gateway sessions and subagents route identically; free-first tier order; per-backend
 health, latency, quota and circuit state persisted across restarts; search and extract caches
-with TTLs and a size cap; a local-only extract ladder; one control surface (`hermes sluice`
+with TTLs and a size cap; a local-only extract ladder; one control surface (`hermes sluice-search`
 plus a Desktop pane); unattended-safe — no prompt may hang a cron or gateway run.
 
 Twelve vendors, one entry each, tiers cheapest first (`DESIGN.md:136-150`):
@@ -143,7 +143,7 @@ the real-profile link and the two config-route buttons (`PLAN.md:28-30`).
 
 Contribution areas and mechanics (`PLAN.md:30-33`): `PANES_AREA` with `placement: right`
 and `width: 380px`, `registerSettingsPage`, `PALETTE_AREA` with entries "probe backends",
-"test query", "clear cache"; poll `/api/plugins/sluice/status` every 5 s while visible; no
+"test query", "clear cache"; poll `/api/plugins/sluice-search-search/status` every 5 s while visible; no
 websockets; UI kit components only, theme variables only, no markup queries.
 
 ### 2.4 Demo target (`PLAN.md:35-39`)
@@ -254,7 +254,7 @@ The `Done:` line of each task is quoted from the plan.
 - **Lines:** 119-125. Day 4. Depends on T3, T7, T8.
 - **Files:** `sluice/cli.py`, registered through `ctx.register_cli_command`
   (`PLAN.md:121`).
-- **Behaviour:** `hermes sluice doctor`, `status`, `setup [--apply]`,
+- **Behaviour:** `hermes sluice-search doctor`, `status`, `setup [--apply]`,
   `use search|extract`, `test --backend <id> "<query>"`, `cache clear`,
   `install playwright|camofox|browserbase` (`PLAN.md:122-123`); `doctor` prints the
   twelve-backend inventory with free/paid and what is missing (`PLAN.md:124`).
@@ -268,7 +268,7 @@ The `Done:` line of each task is quoted from the plan.
 - **Behaviour:** `GET /status`, `POST /probe`, `POST /test`, `POST /install`,
   `GET /jobs/{id}`, `POST /cache/clear` (`PLAN.md:130-131`); a thin wrapper importing
   `sluice.*`, JSON only, no SSE (`PLAN.md:132`).
-- **Done:** "routes mount at `/api/plugins/sluice/` after a gateway restart and answer
+- **Done:** "routes mount at `/api/plugins/sluice-search-search/` after a gateway restart and answer
   under 300 ms with a warm store." (`PLAN.md:133-134`)
 
 ### T11 — desktop pane (`PLAN.md:136-142`)
@@ -328,7 +328,7 @@ these are the members it defines and Sluice overrides:
 
 | Member | Contract |
 |---|---|
-| `name` | stable id matched by `web.search_backend`, `web.extract_backend`, `web.backend`; value `"sluice"` |
+| `name` | stable id matched by `web.search_backend`, `web.extract_backend`, `web.backend`; value `"sluice-search"` |
 | `is_available()` | cheap, no network; true when a keyed backend has credentials |
 | `is_keyless_available()` | cheap, no network; true when a keyless backend is enabled, even with zero keys; must never make `is_available()` true |
 | `supports_search()` | true |
@@ -382,20 +382,20 @@ the pane shows presence and links there (`DESIGN.md:102-105`).
 
 | Command | Behaviour |
 |---|---|
-| `hermes sluice doctor` | twelve-backend inventory, free/paid, what is missing |
-| `hermes sluice status` | circuit, quota, cache state per backend |
-| `hermes sluice setup [--apply]` | print the config route; run it only with `--apply` |
-| `hermes sluice use search\|extract` | switch that Hermes backend to `sluice` |
-| `hermes sluice test --backend <id> "<query>"` | one backend, one query, latency reported |
-| `hermes sluice cache clear` | clear the Sluice cache and `cache/web` |
-| `hermes sluice install playwright\|camofox\|browserbase` | install as a job, never automatic |
+| `hermes sluice-search doctor` | twelve-backend inventory, free/paid, what is missing |
+| `hermes sluice-search status` | circuit, quota, cache state per backend |
+| `hermes sluice-search setup [--apply]` | print the config route; run it only with `--apply` |
+| `hermes sluice-search use search\|extract` | switch that Hermes backend to `sluice` |
+| `hermes sluice-search test --backend <id> "<query>"` | one backend, one query, latency reported |
+| `hermes sluice-search cache clear` | clear the Sluice cache and `cache/web` |
+| `hermes sluice-search install playwright\|camofox\|browserbase` | install as a job, never automatic |
 
 Registered through `ctx.register_cli_command("sluice", ...)`; T1 ships the parser and a
 dispatch that exits non-zero naming the implementing task.
 
 ### 4.4 Dashboard REST API (`PLAN.md:127-134`)
 
-Mounted at `/api/plugins/sluice/` from `dashboard/plugin_api.py`, declared by
+Mounted at `/api/plugins/sluice-search-search/` from `dashboard/plugin_api.py`, declared by
 `dashboard/manifest.json` (Hermes rejects an `api` path outside `dashboard/`,
 `DESIGN.md:96-101`):
 
@@ -415,7 +415,7 @@ under 300 ms with a warm store (`PLAN.md:133-134`).
 
 `desktop/plugin.js`, plain ESM, importing only `@hermes/plugin-sdk`, `react` and
 `react/jsx-runtime` (`DESIGN.md:96-101`), contributing a right-side 380 px pane, a settings
-page and three palette entries (§2.3). Polls `/api/plugins/sluice/status` every 5 s while
+page and three palette entries (§2.3). Polls `/api/plugins/sluice-search-search/status` every 5 s while
 visible; no websockets; UI kit components and theme variables only; never reads app markup.
 
 ## 5. Non-goals and anti-goals

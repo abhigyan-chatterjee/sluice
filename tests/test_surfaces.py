@@ -23,7 +23,7 @@ from sluice.ladder import BLOCK_CLASSES, STAGES
 
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP = "desktop/plugin.js"
-SKILL = "skills/sluice/SKILL.md"
+SKILL = "skills/sluice-search/SKILL.md"
 
 
 def _read(relative: str) -> str:
@@ -87,7 +87,7 @@ def test_dashboard_entry_bundle_registers_with_the_dashboard_loader():
     """The entry must call the loader hook, or the dashboard reports NO_REGISTER."""
     source = _read("dashboard/dist/index.js")
     assert "__HERMES_PLUGINS__" in source
-    assert "registry.register('sluice'" in source
+    assert "registry.register('sluice-search'" in source
 
 
 # ── T11: the desktop pane (Closed gap 3) ───────────────────────────────────────
@@ -120,7 +120,7 @@ def test_desktop_pane_registers_a_settings_page_and_three_palette_commands():
     source = _read(DESKTOP)
     assert "ctx.registerSettingsPage(" in source
     assert re.search(r"\barea:\s*PALETTE_AREA\b", source)
-    for command in ("sluice.probe", "sluice.test", "sluice.cache.clear"):
+    for command in ("sluice-search.probe", "sluice-search.test", "sluice-search.cache.clear"):
         assert f"'{command}'" in source, command
 
 
@@ -183,7 +183,7 @@ def test_skill_frontmatter_names_the_skill():
     front = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     assert front is not None
     fields = front.group(1)
-    assert re.search(r"^name: sluice$", fields, re.MULTILINE)
+    assert re.search(r"^name: sluice-search$", fields, re.MULTILINE)
     assert re.search(r"^description: \S", fields, re.MULTILINE)
     assert re.search(r"^version: 1\.0\.0$", fields, re.MULTILINE)
 
@@ -207,9 +207,9 @@ def test_skill_documents_every_ladder_stage_and_the_stop_rules():
     assert "retry-after" in lowered
 
 
-def test_skill_explains_how_to_read_hermes_sluice_doctor():
+def test_skill_explains_how_to_read_hermes_sluice_search_doctor():
     text = _read(SKILL)
-    assert "hermes sluice doctor" in text
+    assert "hermes sluice-search doctor" in text
     for column in ("tier", "key", "status"):
         assert f"**{column}**" in text, column
 
@@ -244,7 +244,7 @@ def test_readme_discloses_processes_commands_data_dir_and_credentials():
         "Camofox",
         "podman|docker run",
         "python -m playwright install chromium",
-        "hermes config set web.search_backend sluice",
+        "hermes config set web.search_backend sluice-search",
         "plugin data directory",
         "get_provider_env",
         "Settings ▸ Plugins",
@@ -274,7 +274,7 @@ def test_searxng_compose_binds_localhost_and_mounts_the_settings():
 def test_demo_script_exists_and_opens_with_the_inventory_beat():
     text = _read("demo/script.md")
     assert len(text) > 500
-    assert "hermes sluice doctor" in text
+    assert "hermes sluice-search doctor" in text
     assert "demo/fixture_server.py" in text
 
 

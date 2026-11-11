@@ -1,5 +1,5 @@
 ---
-name: sluice
+name: sluice-search
 description: Use when a web fetch is blocked or a search returns nothing useful.
 version: 1.0.0
 ---
@@ -11,7 +11,7 @@ Sluice is Hermes' web layer when it is the configured provider: one `web_search`
 a page comes back empty or a search fails: **which backend answered** and **which rung of
 the fetch ladder was tried**.
 
-## Reading `hermes sluice doctor`
+## Reading `hermes sluice-search doctor`
 
 ```
 backend      tier     plan  key      status
@@ -69,25 +69,25 @@ The returned `content` starts with one provenance line, e.g.
 
 A domain that keeps challenging is remembered for 24 h in `domain_memory`, so the next
 fetch starts at the rung that worked last time. That memory is visible in the Sluice pane
-and in `hermes sluice status`.
+and in `hermes sluice-search status`.
 
 ## Cache and circuits
 
 - Search: 900 s general, 300 s news. Extract: 3600 s. Failed URL: negative 60 s.
 - Three consecutive failures open a backend for 15 min; one quota/credit error opens it for
   60 min. A success resets both.
-- `hermes sluice status` prints circuit, quota, p50/EMA, calls, spend and cache size.
-- `hermes sluice cache clear` clears both the Sluice SQLite cache and Hermes' outer
+- `hermes sluice-search status` prints circuit, quota, p50/EMA, calls, spend and cache size.
+- `hermes sluice-search cache clear` clears both the Sluice SQLite cache and Hermes' outer
   `cache/web` directory. The setup route turns the outer cache off so one TTL rules.
 
 ## Commands
 
 ```sh
-hermes sluice doctor                      # inventory, free/paid, what is missing
-hermes sluice status                      # circuit, quota, latency, cache, block memory
-hermes sluice test --backend ddgs "query" # one backend, one query, latency
-hermes sluice setup --apply               # route web_search/web_extract through Sluice
-hermes sluice cache clear
+hermes sluice-search doctor                      # inventory, free/paid, what is missing
+hermes sluice-search status                      # circuit, quota, latency, cache, block memory
+hermes sluice-search test --backend ddgs "query" # one backend, one query, latency
+hermes sluice-search setup --apply               # route web_search/web_extract through Sluice
+hermes sluice-search cache clear
 ```
 
 ## What Sluice never does

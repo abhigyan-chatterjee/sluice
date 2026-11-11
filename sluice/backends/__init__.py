@@ -253,7 +253,7 @@ def all_backends(settings: Mapping[str, Any] | None = None) -> dict[str, Backend
 
 
 def tiers() -> Mapping[str, tuple[str, ...]]:
-    """Vendor ids grouped by cheapest access mode, for ``hermes sluice doctor``."""
+    """Vendor ids grouped by cheapest access mode, for ``hermes sluice-search doctor``."""
     grouped: dict[str, list[str]] = {}
     for vendor in specs().values():
         grouped.setdefault(vendor.cheapest_tier, []).append(vendor.id)

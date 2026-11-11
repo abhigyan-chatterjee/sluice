@@ -36,31 +36,32 @@ the backend that answered on every row.
 
 ```sh
 hermes plugins install sluice-search
-hermes plugins enable sluice
-hermes plugins doctor sluice --ci
-hermes sluice doctor
+hermes plugins enable sluice-search
+hermes plugins doctor sluice-search --ci
+hermes sluice-search doctor
 ```
 
-The catalog key is `sluice-search` because an unrelated plugin already owns the `sluice`
-name in the upstream catalog. The plugin itself is still named `sluice`, so it installs
-into `plugins/sluice` and enables as `sluice`.
+The plugin is named `sluice-search` everywhere (catalog key, manifest name,
+install directory, CLI command and provider id) because an unrelated plugin
+already owns the `sluice` name in the upstream catalog, and Hermes names the
+install folder and the settings key from the manifest name.
 
 `hermes plugins install` asks before installing the plugin's four Python dependencies
 (`httpx`, `trafilatura`, `playwright`, `ddgs`). `doctor --ci` exits non-zero on a manifest or
-registration error. `hermes sluice doctor` prints the twelve-backend inventory: tier, plan,
+registration error. `hermes sluice-search doctor` prints the twelve-backend inventory: tier, plan,
 key state and what is missing.
 
 To route Hermes through Sluice:
 
 ```sh
-hermes sluice setup --apply
+hermes sluice-search setup --apply
 ```
 
 That runs three `hermes config set` commands and nothing else:
 
 ```sh
-hermes config set web.search_backend sluice
-hermes config set web.extract_backend sluice
+hermes config set web.search_backend sluice-search
+hermes config set web.extract_backend sluice-search
 hermes config set web.cache_enabled false
 ```
 
@@ -79,8 +80,8 @@ The outer Hermes cache is turned off so there is exactly one cache with one TTL.
 `--apply`, `setup` only prints the commands. Sluice never writes `config.yaml` itself and
 never patches Hermes core.
 
-Each route is also available on its own as `hermes sluice use search [--apply]` and
-`hermes sluice use extract [--apply]`. The same operations work from a checkout through the
+Each route is also available on its own as `hermes sluice-search use search [--apply]` and
+`hermes sluice-search use extract [--apply]`. The same operations work from a checkout through the
 standalone console script:
 
 ```sh
@@ -171,7 +172,7 @@ interpreter that reads one JSON request on stdin and prints one JSON object, so 
 The same thing through Hermes, once the plugin is installed:
 
 ```sh
-hermes sluice test --backend exa --limit 2 "sqlite wal checkpoint"
+hermes sluice-search test --backend exa --limit 2 "sqlite wal checkpoint"
 ```
 
 ```
@@ -187,13 +188,13 @@ exa (keyless, keyless) answered in 886 ms with 2 result(s)
 
 | Command | What it does |
 |---|---|
-| `hermes sluice doctor` | twelve-backend inventory, free/paid, key state, browser engines, the exact next command per gap |
-| `hermes sluice status` | circuit, quota, p50/EMA latency, calls, spend, cache size, per-domain block memory |
-| `hermes sluice setup [--apply]` | print (or run) the three config routes |
-| `hermes sluice use search\|extract [--apply]` | switch one Hermes backend to Sluice |
-| `hermes sluice test --backend <id> "query"` | one backend, one query, latency and rows |
-| `hermes sluice cache clear` | clear the Sluice SQLite cache **and** Hermes' `cache/web` |
-| `hermes sluice install playwright\|camofox\|browserbase` | run an install job; never automatic |
+| `hermes sluice-search doctor` | twelve-backend inventory, free/paid, key state, browser engines, the exact next command per gap |
+| `hermes sluice-search status` | circuit, quota, p50/EMA latency, calls, spend, cache size, per-domain block memory |
+| `hermes sluice-search setup [--apply]` | print (or run) the three config routes |
+| `hermes sluice-search use search\|extract [--apply]` | switch one Hermes backend to Sluice |
+| `hermes sluice-search test --backend <id> "query"` | one backend, one query, latency and rows |
+| `hermes sluice-search cache clear` | clear the Sluice SQLite cache **and** Hermes' `cache/web` |
+| `hermes sluice-search install playwright\|camofox\|browserbase` | run an install job; never automatic |
 
 Every command is unattended-safe: it never prompts, returns non-zero on failure, and prints
 the command that comes next.
@@ -251,11 +252,11 @@ Sluice makes network calls only when you or a Hermes tool ask it to. The destina
 Local processes and binary use:
 
 - **Playwright Chromium** is launched headless by the ladder, one browser per fetch, with a
-  15 s cap. `hermes sluice install playwright` runs `python -m playwright install chromium`,
+  15 s cap. `hermes sluice-search install playwright` runs `python -m playwright install chromium`,
   which downloads the browser build. Nothing is installed otherwise.
-- **Camofox** is a Node server you run yourself. `hermes sluice install camofox` either
-  starts the container `sluice-camofox` from `ghcr.io/jo-inc/camofox-browser:latest` (podman
-  first, then docker) or, with no container runtime, installs `@askjo/camofox-browser` into
+- **Camofox** is a Node server you run yourself. `hermes sluice-search install camofox` either
+  starts the container `sluice-camofox` from `ghcr.io/jo-inc/camofox-browser@sha256:49f8…` (podman
+  first, then docker) or, with no container runtime, installs `@askjo/camofox-browser@1.19.0` into
   the plugin data directory and prints the `npx` command that starts it. The first start
   downloads Camoufox (the vendor calls it "hundreds of MB"). The pane's Stop button runs
   `podman|docker stop sluice-camofox`.
@@ -266,18 +267,18 @@ Shell commands Sluice may run, always from an explicit user action:
 
 ```sh
 python -m playwright install chromium
-podman|docker run -d --name sluice-camofox -p 9377:9377 -e CAMOFOX_PORT=9377 ghcr.io/jo-inc/camofox-browser:latest
+podman|docker run -d --name sluice-camofox -p 9377:9377 -e CAMOFOX_PORT=9377 ghcr.io/jo-inc/camofox-browser@sha256:49f8e02f9fb0e191b406845482745efc72f835db06789e3a34e77a6ff1497046
 podman|docker stop sluice-camofox
-npm install --prefix <plugin data dir>/camofox @askjo/camofox-browser
-hermes config set web.search_backend sluice      # only with --apply
-hermes config set web.extract_backend sluice     # only with --apply
+npm install --prefix <plugin data dir>/camofox @askjo/camofox-browser@1.19.0
+hermes config set web.search_backend sluice-search      # only with --apply
+hermes config set web.extract_backend sluice-search     # only with --apply
 hermes config set web.cache_enabled false        # only with --apply
 ```
 
 ## Data and credentials
 
 The SQLite store lives in the plugin data directory, `ctx.plugin_data_dir()`, normally
-`~/.hermes/plugin-data/sluice/sluice.db`, or `~/.hermes/plugins/sluice/data` outside a
+`~/.hermes/plugin-data/sluice/sluice.db`, or `~/.hermes/plugins/sluice-search/data` outside a
 Hermes context. It holds:
 
 - the search and extract cache, with TTLs (search 900 s general and 300 s news, extract
@@ -292,7 +293,7 @@ No credential is ever written to that store. Keys live in the profile `.env` thr
 and are read through `get_provider_env()`, or `os.environ` outside Hermes; the pane and the
 API expose presence and the env var name only.
 
-The dashboard API is mounted at `/api/plugins/sluice/` and speaks JSON only. The Desktop pane
+The dashboard API is mounted at `/api/plugins/sluice-search-search/` and speaks JSON only. The Desktop pane
 polls `/status` every 5 s while visible and holds no secret.
 
 ## Documentation
