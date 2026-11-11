@@ -47,4 +47,4 @@ checks run when a maintainer starts them.
 - The video is done and verified: `/home/abhi/sluice-demo-render/sluice-demo.mp4`, 56.9 s.
 - It still has to be posted on X with @NousResearch tagged, and that post's URL captured.
 - The Discord username is a field nobody has filled in.
-- Everything else is ready: PR #152754 is open, the pin is `b40e6b9`, the entry validates.
+- Everything else is ready: PR #152754 is open, the pin is `9a948e9`, the entry validates.

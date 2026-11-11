@@ -32,7 +32,7 @@ Sluice is a production-grade, tiered, free-first web search and extraction engin
   Implements a nine-class block classifier: `ok`, `js_required`, `rate_limited`, `challenge`, `forbidden`, `auth_required`, `payment_required`, `policy_blocked` and `error`. Vendor markers (Cloudflare, Imperva, PerimeterX/HUMAN, Kasada, Akamai, DataDome, AWS WAF, Fastly) feed the `challenge` class. Escalates extraction across three stages: HTTP (httpx + trafilatura) → real Chromium through Playwright → the Camofox REST server, stopping at authentication and policy boundaries. Checks `robots.txt` before the first request and `X-Robots-Tag`/`Content-Signal` on every response.
 
 ### Hermetic Test Story
-- **Test Results**: `555 passed, 10 skipped`, 0 failed across 13 test modules at the pinned commit `b40e6b9`. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`. Re-run `pytest -q` at the tip of `main` for the current number.
+- **Test Results**: `559 passed, 10 skipped`, 0 failed across 13 test modules at the pinned commit `9a948e9`. The ten skips are the opt-in live vendor tests gated by `SLUICE_LIVE_TESTS=1`. Re-run `pytest -q` at the tip of `main` for the current number.
 - **Hermetic Isolation**: Tests run against a synthetic temporary `HERMES_HOME` with zero writes to host configuration or live agent state.
 - **Validation**:
   - `hermes plugins doctor --ci`: Passed (exit code 0).
@@ -103,7 +103,7 @@ hermes config set web.extract_backend sluice-search
 ```
 
 ### Verification
-- 555 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit `b40e6b9`.
+- 559 unit and integration tests passing, 10 skipped in a hermetic environment at the pinned commit `9a948e9`.
 - `hermes plugins doctor --ci` and `hermes plugins validate` pass with 0 errors.
 ```
 
@@ -128,7 +128,7 @@ done; the catalog PR is open; the Typeform is the remaining step.
 - [x] **Open Upstream Catalog Pull Request** — done:
   - PR: `https://github.com/NousResearch/hermes-agent/pull/152754`
   - Entry file: `submission/plugin-catalog-sluice-search.yaml`, catalog key `sluice-search`.
-  - Pin: `b40e6b97601b715175fb656513ce84195bc4de8b`. Re-check against the tip of `main` at
+  - Pin: `9a948e93e4881e87cc7228d57ffd550fd590a502`. Re-check against the tip of `main` at
     submit time; a moved tip needs a re-pin PR, not an edit to this one.
 - [x] **Submit Typeform** — done. `https://form.typeform.com/to/FwJLvOln` returned
   "Submission Received" on 2026-11-11. Winners are announced on @nousresearch on X after the
@@ -143,14 +143,14 @@ done; the catalog PR is open; the Typeform is the remaining step.
 | **Plugin Name** | `sluice-search` | `plugin.yaml:1`. The name cannot be `sluice`: an unrelated plugin already owns `plugin-catalog/sluice.yaml` upstream (orjinameh/airlock), and Hermes names the install folder and settings key from the manifest name. The display title stays `Sluice`. |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
-| **Pinned Commit SHA** | `b40e6b97601b715175fb656513ce84195bc4de8b` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
+| **Pinned Commit SHA** | `9a948e93e4881e87cc7228d57ffd550fd590a502` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
 | **Contact Email** | `abhi@nullbit.in` | Personal dev/project contact |
 | **Hermes Compatibility** | `>=0.22.5` | `plugin.yaml:8` |
 | **Python Dependencies** | `httpx>=0.27,<1`, `trafilatura>=1.8,<3`, `playwright>=1.45,<2`, `ddgs>=9,<10` | `plugin.yaml:11-15` |
 | **Core Capabilities** | Tiered Search Provider (`provides_web_providers: [sluice]`), three-stage Anti-Bot Extraction Ladder, WAL SQLite Store with Hysteresis LRU, Desktop Management Panel, Hermes CLI integration | Verified in codebase |
-| **Test Verification** | 555 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `b40e6b9`; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
+| **Test Verification** | 559 tests passed, 10 skipped (live opt-in), 0 failed across 13 modules at `9a948e9`; hermetic fixtures with synthetic `HERMES_HOME`; 16/16 plugin validation checks passed | `tests/`, `pytest`, `hermes plugins validate` |
 | **Demo Video URL** | *(Requires Abhi)* | Must be the **X post URL** carrying the video with @NousResearch tagged — see `submission/typeform.md` |
 | **Discord Username** | *(Requires Abhi)* | Required form field; not recorded anywhere |
 | **Form** | `https://form.typeform.com/to/FwJLvOln` | "Hermes Agent Plugin Hackathon Submission Form" |
