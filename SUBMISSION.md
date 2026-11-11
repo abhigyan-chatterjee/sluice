@@ -143,7 +143,7 @@ done; the catalog PR is open; the Typeform is the remaining step.
 | **Plugin Name** | `sluice-search` | `plugin.yaml:1`. The name cannot be `sluice`: an unrelated plugin already owns `plugin-catalog/sluice.yaml` upstream (orjinameh/airlock), and Hermes names the install folder and settings key from the manifest name. The display title stays `Sluice`. |
 | **Short Description / Tagline** | Tiered free-first web search and extraction router and backend manager for Hermes | `plugin.yaml:3` |
 | **Public Repository URL** | `https://github.com/abhigyan-chatterjee/sluice` | Public GitHub repo on `main` |
-| **Pinned Commit SHA** | `9a948e93e4881e87cc7228d57ffd550fd590a502` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 555 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
+| **Pinned Commit SHA** | `9a948e93e4881e87cc7228d57ffd550fd590a502` (the tree the catalog entry pins; re-check against the tip of `main` at submit time) | pytest 559 passed / 10 skipped on this SHA; `hermes plugins validate` 16/16 |
 | **License** | `MIT` | `LICENSE`, `plugin.yaml:5` |
 | **Author Name** | Abhigyan Chatterjee | `plugin.yaml:4` |
 | **Contact Email** | `abhi@nullbit.in` | Personal dev/project contact |
