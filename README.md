@@ -243,8 +243,10 @@ Sluice makes network calls only when you or a Hermes tool ask it to. The destina
   own SearXNG at the `searxng_url` setting. The keyless paths (Exa MCP, Parallel MCP,
   Firecrawl, Tavily, Keenable public) send no credential.
 - **Target pages**: extraction fetches the URL you asked for, its `robots.txt`, and, only
-  when the ladder climbs, the same URL through Chromium or Camofox. Responses are not sent
-  anywhere else.
+  when the ladder climbs, the same URL through Chromium or Camofox. The redirect-hop
+  SSRF guard covers the httpx and Chromium rungs; the Camofox rung hands the URL to
+  your Camofox server, whose own redirects the guard cannot see. Responses are not
+  sent anywhere else.
 - **Local servers**: Camofox at `CAMOFOX_URL` (default `http://localhost:9377`) and SearXNG
   at `searxng_url` or `SEARXNG_URL`, if you run them. Health is checked with `GET /health`,
   and SearXNG with `GET /search`.

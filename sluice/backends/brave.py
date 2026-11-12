@@ -14,9 +14,9 @@ allowance being spent. Neither is reported as "query too long" (references/endpo
 
 from __future__ import annotations
 
-import os
 from typing import Any, Sequence
 
+from ..config import secret
 from . import Backend, BackendSpec
 from ._http import (
     call_timeout,
@@ -59,7 +59,7 @@ class BraveBackend(Backend):
     @property
     def alternate_key(self) -> str:
         alt = str(self.settings.get("BRAVE_SEARCH_API_KEY") or "").strip()
-        return alt or (os.environ.get("BRAVE_SEARCH_API_KEY") or "").strip()
+        return alt or secret("BRAVE_SEARCH_API_KEY")
 
     def missing_message(self) -> str:
         if self.key:

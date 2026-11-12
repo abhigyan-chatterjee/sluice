@@ -805,6 +805,20 @@ def test_brave_two_key_trap_is_explained(http):
     assert http.requests == []
 
 
+def test_brave_alternate_key_resolves_through_secret(monkeypatch):
+    """A key set through Hermes config or a profile resolves, not only the launch env."""
+    from sluice.backends.brave import BraveBackend
+
+    monkeypatch.setattr(
+        "sluice.backends.brave.secret",
+        lambda env: "profile-key" if env == "BRAVE_SEARCH_API_KEY" else "",
+    )
+    backend = make_backend("brave", settings())
+    assert isinstance(backend, BraveBackend)
+    assert backend.alternate_key == "profile-key"
+    assert backend.missing_message() == TWO_KEY_TRAP
+
+
 def test_brave_422_subscription_token_invalid_is_a_bad_key(http):
     http.respond(
         lambda request: json_response(

@@ -420,17 +420,12 @@ def _is_global_ip(ip: Any) -> bool:
 
 
 def _redirect_target_from_response(response: Any) -> str | None:
-    """The redirect target visible from inside an httpx response hook."""
-    try:
-        from tools.url_safety import redirect_target_from_response as _hermes_target  # type: ignore
+    """The redirect target visible from inside an httpx response hook.
 
-        target = _hermes_target(response)
-        if target:
-            return str(target)
-    except ImportError:
-        pass
-    except Exception:  # noqa: BLE001 - fall through to the local resolver
-        pass
+    ``response.next_request`` is usually ``None`` inside hooks (populated later
+    by the follower), so ``Location`` is resolved first and ``next_request`` is
+    only a fallback.
+    """
     if not getattr(response, "is_redirect", False):
         return None
     location = (getattr(response, "headers", {}) or {}).get("location")
